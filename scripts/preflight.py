@@ -46,7 +46,13 @@ HTML_ELEMENTS = {
 }
 
 TAG = re.compile(r"<\/?[A-Za-z][A-Za-z0-9-]*(\s[^>]*)?>")
-FENCE = re.compile(r"^\s*(`{3,})")
+# [ \t]*, NOT \s*: the upload endpoint's section parser opens a fence only after spaces and tabs, and
+# a fence line carrying NBSP or any other Unicode space before its backticks is
+# NOT a fence to the site (it refuses it, E_FENCE_INVISIBLE). \s* here made the two
+# disagree, and once the comment scan skips fenced lines (2026-09-21) that disagreement
+# turned into "OK" for a comment the site refuses. Where the engines differ, take
+# the reading that refuses.
+FENCE = re.compile(r"^[ \t]*(`{3,})")
 # THE LINK TEXT IS BOUNDED, AND THAT BOUND IS LOAD-BEARING RATHER THAN TIDY.
 # Unbounded, [^\]]* is quadratic on any body with unmatched "[": at every one of
 # n start positions it runs to the end of the input looking for a "]" that is
@@ -157,15 +163,15 @@ def normalise_for_scan(text):
 
 
 SECRETS = [
-    ("an Anthropic key",            re.compile(r"\bsk-ant-[A-Za-z0-9\-]{10,}\b")),
-    ("an OpenAI style key",         re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),
-    ("an AWS access key id",        re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("a GitHub token",              re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36}\b"
-                                               r"|\bgithub_pat_[A-Za-z0-9_]{22,}\b")),
-    ("a Google API key",            re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
-    ("a Slack token",               re.compile(r"\bxox[abprs]-[0-9A-Za-z-]{10,}\b")),
-    ("a JWT",                       re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\."
-                                               r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")),
+    ("an Anthropic key",            re.compile(r"(?<![A-Za-z0-9])sk-ant-[A-Za-z0-9_\-]{10,}(?![A-Za-z0-9])")),
+    ("an OpenAI style key",         re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}(?![A-Za-z0-9])")),
+    ("an AWS access key id",        re.compile(r"(?<![A-Za-z0-9])AKIA[0-9A-Z]{16}(?![A-Za-z0-9])")),
+    ("a GitHub token",              re.compile(r"(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{36}(?![A-Za-z0-9])"
+                                               r"|(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{22,}(?![A-Za-z0-9])")),
+    ("a Google API key",            re.compile(r"(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}(?:(?<=[-_])|(?![A-Za-z0-9]))")),
+    ("a Slack token",               re.compile(r"(?<![A-Za-z0-9])xox[abprs]-[0-9A-Za-z-]{10,}(?![A-Za-z0-9])")),
+    ("a JWT",                       re.compile(r"(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{8,}\."
+                                               r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?![A-Za-z0-9])")),
     ("a private key block",         re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----")),
     # Anchored at the query delimiter, not at the scheme. Tying the parameter to
     # https?:// needs a scan run between them, and every form of that run was
@@ -285,7 +291,7 @@ SECRETS = [
     # like a credential slot is the safe direction at a public door. A false
     # positive costs one confusing message; releasing ?auth=XXXqwerty... costs
     # somebody their credential.
-    ("a URL carrying a credential", re.compile(r"(?<=\S)[?&](?:(?:token|key|secret|auth|apikey|api_key|access_token)=(?!(?:\$\{[A-Za-z_][A-Za-z_]{0,64}\}|\{\{[A-Za-z_][A-Za-z _.-]{0,64}\}\}|<[A-Za-z_][A-Za-z _.-]{0,64}>|\[[A-Za-z_][A-Za-z _.-]{0,64}\])(?=[\s&#]|$))\S+|(?:[Ss][Ii][Gg]|(?:[Xx]-[A-Za-z][A-Za-z0-9]{1,9}-)?[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee])=(?!(?:\$\{[A-Za-z_][A-Za-z_]{0,64}\}|\{\{[A-Za-z_][A-Za-z _.-]{0,64}\}\}|<[A-Za-z_][A-Za-z _.-]{0,64}>|\[[A-Za-z_][A-Za-z _.-]{0,64}\])(?=[\s&#]|$))[^\s&#]{16,})")),
+    ("a URL carrying a credential", re.compile(r"(?<=\S)(?:[?]|&(?:(?:[Aa][Mm][Pp]|#0*38|#[Xx]0*26);)*)(?:(?:[Tt][Oo][Kk][Ee][Nn]|[Kk][Ee][Yy]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Uu][Tt][Hh]|[Aa][Pp][Ii][Kk][Ee][Yy]|[Aa][Pp][Ii]_[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss]_[Tt][Oo][Kk][Ee][Nn])=(?!(?:\$\{[A-Za-z_][A-Za-z_]{0,64}\}|\{\{[A-Za-z_][A-Za-z _.-]{0,64}\}\}|<[A-Za-z_][A-Za-z _.-]{0,64}>|\[[A-Za-z_][A-Za-z _.-]{0,64}\])(?=[\s&#]|$))\S+|(?:[Ss][Ii][Gg]|(?:[Xx]-[A-Za-z][A-Za-z0-9]{1,9}-)?[Ss][Ii][Gg][Nn][Aa][Tt][Uu][Rr][Ee])=(?!(?:\$\{[A-Za-z_][A-Za-z_]{0,64}\}|\{\{[A-Za-z_][A-Za-z _.-]{0,64}\}\}|<[A-Za-z_][A-Za-z _.-]{0,64}>|\[[A-Za-z_][A-Za-z _.-]{0,64}\])(?=[\s&#]|$))[^\s&#]{16,})")),
     # A WEBHOOK URL WHOSE PATH IS THE CREDENTIAL, added 2026-09-01. Nothing
     # above sees this shape, because there is no parameter and no assignment:
     # the secret is the path itself, and possession of the URL is the whole
@@ -348,8 +354,280 @@ SECRETS = [
     # from a live URL by anything this rule can see, and refusing it is the safe
     # direction at a public door.
     ("a webhook URL carrying its own secret",
-     re.compile(r"(?<![A-Za-z0-9_])[Hh][Tt][Tt][Pp][Ss]://(?:(?:[Hh][Oo][Oo][Kk][Ss]\.[Ss][Ll][Aa][Cc][Kk]\.[Cc][Oo][Mm]/(?:services|triggers|workflows)|(?:[Cc][Aa][Nn][Aa][Rr][Yy]\.|[Pp][Tt][Bb]\.)?[Dd][Ii][Ss][Cc][Oo][Rr][Dd](?:[Aa][Pp][Pp])?\.[Cc][Oo][Mm]/api/(?:v[0-9]{1,2}/)?webhooks|[A-Za-z0-9-]{1,63}\.[Ww][Ee][Bb][Hh][Oo][Oo][Kk]\.[Oo][Ff][Ff][Ii][Cc][Ee]\.[Cc][Oo][Mm]/webhookb2|[Oo][Uu][Tt][Ll][Oo][Oo][Kk]\.[Oo][Ff][Ff][Ii][Cc][Ee]\.[Cc][Oo][Mm]/webhook|[Hh][Oo][Oo][Kk][Ss]\.[Zz][Aa][Pp][Ii][Ee][Rr]\.[Cc][Oo][Mm]/hooks/(?:catch|standard))[/A-Za-z0-9_+=-]{0,4}/[A-Za-z0-9_/+=@.-]{16,}|[Aa][Pp][Ii]\.[Tt][Ee][Ll][Ee][Gg][Rr][Aa][Mm]\.[Oo][Rr][Gg]/bot[0-9]{6,}:[A-Za-z0-9_-]{20,})")),
-    ("a password assignment",       re.compile(r"\b(password|passwd|pwd)\s*[:=]\s*\S+", re.I)),
+     re.compile(r"(?<![A-Za-z0-9_])[Hh][Tt][Tt][Pp][Ss]://(?:(?:[Hh][Oo][Oo][Kk][Ss]\.[Ss][Ll][Aa][Cc][Kk]\.[Cc][Oo][Mm](?::[0-9]*)?/(?:[Ss][Ee][Rr][Vv][Ii][Cc][Ee][Ss]|[Tt][Rr][Ii][Gg][Gg][Ee][Rr][Ss]|[Ww][Oo][Rr][Kk][Ff][Ll][Oo][Ww][Ss])|(?:[Cc][Aa][Nn][Aa][Rr][Yy]\.|[Pp][Tt][Bb]\.)?[Dd][Ii][Ss][Cc][Oo][Rr][Dd](?:[Aa][Pp][Pp])?\.[Cc][Oo][Mm](?::[0-9]*)?/[Aa][Pp][Ii]/(?:[Vv][0-9]{1,2}/)?[Ww][Ee][Bb][Hh][Oo][Oo][Kk][Ss]|[A-Za-z0-9-]{1,63}\.[Ww][Ee][Bb][Hh][Oo][Oo][Kk]\.[Oo][Ff][Ff][Ii][Cc][Ee]\.[Cc][Oo][Mm](?::[0-9]*)?/[Ww][Ee][Bb][Hh][Oo][Oo][Kk][Bb]2|[Oo][Uu][Tt][Ll][Oo][Oo][Kk]\.[Oo][Ff][Ff][Ii][Cc][Ee]\.[Cc][Oo][Mm](?::[0-9]*)?/[Ww][Ee][Bb][Hh][Oo][Oo][Kk]|[Hh][Oo][Oo][Kk][Ss]\.[Zz][Aa][Pp][Ii][Ee][Rr]\.[Cc][Oo][Mm](?::[0-9]*)?/[Hh][Oo][Oo][Kk][Ss]/(?:[Cc][Aa][Tt][Cc][Hh]|[Ss][Tt][Aa][Nn][Dd][Aa][Rr][Dd]))[/A-Za-z0-9_+=-]{0,4}/[A-Za-z0-9_/+=@.-]{16,}|[Aa][Pp][Ii]\.[Tt][Ee][Ll][Ee][Gg][Rr][Aa][Mm]\.[Oo][Rr][Gg](?::[0-9]*)?/[Bb][Oo][Tt][0-9]{6,}:[A-Za-z0-9_-]{20,})")),
+    # A password assignment. Rewritten 2026-09-01 and held character for
+    # character in step with the scrubber's PASSWORD_ASSIGN, where the full
+    # reasoning is written out: why the name has two tiers, why every letter is
+    # spelled as a class instead of using (?i) and \b, which false positives are
+    # excluded, which two are deliberately left in, and the corpus measurement.
+    # If you change one, change the other and the endpoint's copy. They are
+    # three copies of one judgement, and the harness that compares them compares
+    # their SOURCE, so only a behaviour test on both engines can tell you they
+    # still agree.
+    #
+    # What it replaces: \b(password|passwd|pwd)\s*[:=]\s*\S+ with re.I, whose \b
+    # cannot fire after an underscore or a letter, so DB_PASSWORD=hunter2,
+    # smtp_pass: hunter2 and export DB_PASSWORD=hunter2 all reached the upload
+    # endpoint while `password: hunter2` was refused.
+    #
+    # Dropping re.I also closes a cross-engine divergence that ran the unsafe
+    # way. Python's re.I casefolds U+017F to s and V8's /i without /u does not,
+    # so `pa<U+017F>sword: hunter2` was refused here and accepted there, which
+    # is preflight lying about the endpoint in the one direction that leaks.
+    #
+    # Dropping re.I alone would have closed it the wrong way, by making both
+    # sides miss. The trigger classes spell the long s out as [Ss<U+017F>], so
+    # both sides refuse it instead. Measured over 119,837 third-party files,
+    # that widening cost +0 files and +0 occurrences.
+    #
+    # Complete for THIS rule and not for the one below it. Over all 1,114,112
+    # codepoints, FOUR fold to an ASCII letter under Python's re.I, reaching
+    # three letters: U+017F to s, U+212A to k, and U+0130 and U+0131 to i. An
+    # earlier version of this comment said "exactly two", having counted the two
+    # it already knew about and stated the result as a sweep. The conclusion is
+    # unchanged: none of p-a-s-s-w-o-r-d is i or k, so the long s is the only
+    # fold that reaches this rule and this rule is done.
+    #
+    # V8 folds none of the four under bare /i, and only U+017F and U+212A under
+    # /iu, so /u is not the repair it looks like and no case flag is the only
+    # spelling the two engines cannot disagree about. See scrub.py for the long
+    # form of both points.
+    #
+    # "a credential assignment" spelled neither until the change of 2026-09-04,
+    # while carrying s in secret and passphrase and k in key and token, so four
+    # of its keywords missed under a homoglyph, byte-identically in both
+    # engines. Its classes now carry both characters, like this rule, in all
+    # three copies (this file, scripts/scrub.py, the upload endpoint's validator).
+    #
+    # The change of 2026-09-09 closed the same gap for the other two ASCII-reaching
+    # folds: U+0130 and U+0131 both fold to `i`, and "authorization" (both
+    # i's), "credential" and "api_key" spelled `i` as bare `[Ii]`. Widened to
+    # `[Iiİı]` at every TRIGGER position only -- the `[Ii]` inside
+    # `idempotency`, `insert` and `foreign` are EXCLUSIONS and stay ASCII-only,
+    # for the same reason the change of 2026-09-04's s/k classes never touched an exclusion:
+    # widening a trigger only widens what gets refused, widening an exclusion
+    # widens what gets released. See scrub.py's copy for the full reasoning.
+    #
+    # THREE CHANGES OF 2026-09-05: pwd's prefix no longer needs a separator,
+    # pass's glued-prefix class is now any case, and the strong (backstop) arm
+    # takes over the bare-keyword arm's job on ANY prefix with no value-side
+    # exclusion, closing a bracket-leading-value bypass on prefixed keys. Value
+    # capture on both arms now reads to the end of the physical line. Corpus:
+    # 477 files fired before, 564 after, zero regressions ON THAT CORPUS. Full
+    # reasoning, the fifteen fixture reclassifications, the eleven lines moved
+    # out of the test suite's false-positive corpus, the reverted over-guard that
+    # broke `PWD=~gy...`, and the reorder that puts the backstop arm where
+    # the main_arm of the test suite's password-rule baseline now freezes, are
+    # beside scrub.py's copy of this rule.
+    #
+    # The change of 2026-09-09: the separator widened from `[ \t]` to
+    # `[^\S\n]` on both arms -- the same leak CREDENTIAL_ASSIGN had (any
+    # Unicode whitespace other than space/tab crossed the separator
+    # without ending the line), confirmed here independently. See
+    # scrub.py's copy for the full reasoning.
+    ("a password assignment",       re.compile(
+        # THIS RULE IS TWO RULES IN ONE, AND THE SECOND ARM IS NOT OPTIONAL.
+        #
+        # Everything from here to the first \S+ is the WEAK arm: `pass`, glued
+        # or separated but never bare, gated by a digit-and-length lookahead,
+        # then a FULLY guarded assignment operator and the full exclusion
+        # chain below. `pass` alone is an ordinary English word and a test
+        # status (`SHOULD_PASS`, `bypass`, `compass`), which is why it stays
+        # behind every guard the arm after it no longer needs.
+        #
+        # After it is the STRONG (backstop) arm: `password`, `passwd` and
+        # `pwd`, on any prefix at all -- glued, separated, or none -- with no
+        # value-side exclusion whatsoever, reading to the end of the physical
+        # line. It absorbs what used to be a separate bare-keyword-only arm,
+        # and it is kept as the FINAL branch of this pattern for the same
+        # reason that older arm was: the test suite's password-rule baseline
+        # freezes this exact text as the tail of the shipped pattern
+        # (main_arm), so an insertion into it -- an operator guard, a value
+        # exclusion, anything -- fails the suite by string comparison alone,
+        # independent of any corpus. An empty prefix is one case of "any
+        # prefix", so the old bare-only arm is gone; this one subsumes it.
+        #
+        # Its operator keeps the quote handling the shared operator above has
+        # -- `password": "value"` and `password\': \'value\'` still work --
+        # but drops that operator\'s `(?![=>~:])` guard. Giving it the FULL
+        # guarded operator was tried and reverted: values starting with `~`,
+        # `=`, `>` or `:` stopped matching (`PWD=~gy...`), which
+        # the test suite's password-rule baseline exists to catch, because every
+        # value-side exclusion elsewhere in this file is safe only because
+        # this arm backstops it unconditionally.
+        '(?:'
+        # Left boundary. Same reasoning as CREDENTIAL_ASSIGN below: without it
+        # the leading [A-Za-z0-9_.\-]* restarts at every position of a long
+        # identifier run and the rule goes quadratic on input carrying no
+        # password at all.
+        '(?<![A-Za-z0-9_.\\-])'
+        '(?:'
+        # Weak: pass, after a separator or a glued letter/digit (either case),
+        # and only in front of a value with eight or more characters and a
+        # digit somewhere in them. Never bare; see the note above this entry.
+        '(?:[A-Za-z0-9_.\\-]*[_\\-.][Pp][Aa][Ssſ][Ssſ]|[A-Za-z0-9_.\\-]*[A-Za-z0-9][Pp][Aa][Ssſ][Ssſ])(?![A-Za-z])'
+        '(?=[\\"\'`]?[ \\t]*(?:\\r?\\n[ \\t]*)*[:=](?![=>~:])[ \\t]*(?:\\r?\\n[ \\t]*)*[\\"\'`]?(?=[^\\s\\"\']{8})(?=[^\\s\\"\']{0,256}[0-9]))'
+        # The assignment: [ \t] rather than \s, with one optional line break
+        # spelled out, so "spans a newline" is a thing this rule says rather
+        # than a thing \s does by accident. (?![=>~:]) keeps it off ===, =>,
+        # := and the :: of a CSS selector -- safe here because `pass` is
+        # already behind a digit gate and a full exclusion chain, unlike the
+        # backstop arm's bare keyword below, which must stay wide open.
+        '[\\"\'`]?[ \\t]*(?:\\r?\\n[ \\t]*)*[:=](?![=>~:])[ \\t]*(?:\\r?\\n[ \\t]*)*[\\"\'`]?'
+        # The value must not itself start with a quote. Without this the engine
+        # backtracks the optional quote above to nothing, takes the quote as the
+        # first character of the value, and walks straight past every exclusion
+        # below. That one lookahead is what makes the rest of them load bearing.
+        '(?![\\"\'`])'
+        '(?=[^\\s\\"\']{3})'
+        '(?![\\[{(<>/\\]])'
+        '(?!(?:[Tt]rue|TRUE|[Ff]alse|FALSE|[Nn]ull|NULL|[Nn]il|None|undefined|void)(?![A-Za-z0-9_]))'
+        # THE DOTTED-IDENTIFIER EXCLUSION, AND THE THIRD TRADE IT MAKES.
+        #
+        # It is here to release `password: os.environ.get` and `pwd: config.db.pass`,
+        # which are code references rather than values, and it does that well.
+        #
+        # It also releases any password that happens to LOOK like a dotted
+        # identifier, and that is a real loss, not a theoretical one. Verified,
+        # the old bare rule catches all three and this releases all three:
+        #
+        #     a password assignment whose value is `hunter2` dot `local`
+        #     one whose value is three lowercase words joined by dots and ending
+        #       in four digits
+        #     one whose value is a single letter, a dot, and a single letter
+        #
+        # An env-var-style assignment whose value is two capitalised leetspeak
+        # words joined by a dot is caught by NEITHER rule, which is the sharper
+        # version: it is exactly the shape this rule was widened to catch, and a
+        # single dot in the value is enough to put it back out of reach.
+        #
+        # The examples are described rather than written out because a literal
+        # one trips this repository's own leak gate on the way in, which is the
+        # rule working correctly on the comment that documents it.
+        #
+        # The escape hatch is narrow and worth knowing: the exclusion needs every
+        # segment to start with a letter or underscore, so `password:
+        # Correct.Horse.9` IS still caught, because `9` cannot open an identifier.
+        #
+        # Kept because a passport describing an agent carries far more dotted code
+        # references than dotted passwords, and a gate that refuses
+        # `os.environ.get` on every capture is a gate people route around. That is
+        # a judgement about which error is cheaper, not a measurement, and it is
+        # the third of this rule's three disclosed trades. The change of 2026-09-05
+        # narrows its reach to the WEAK `pass` arm only; a prefixed
+        # `password`/`passwd`/`pwd` no longer has any value-side exclusion at all.
+        '(?!(?:[A-Za-z_][A-Za-z0-9_]*\\.)+[A-Za-z_][A-Za-z0-9_]*(?![A-Za-z0-9_.]))'
+        '(?![A-Za-z_][A-Za-z0-9_]*[ \\t]*\\()'
+        '(?!\\$\\{)'
+        '(?!\\$[A-Z_][A-Z0-9_]*(?![A-Za-z0-9_]))'
+        '(?!(?:[Yy][Oo][Uu][Rr]|[Mm][Yy]|[Ii][Nn][Ss][Ee][Rr][Tt]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]|[Ee][Xx][Aa][Mm][Pp][Ll][Ee]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Cc][Hh][Aa][Nn][Gg][Ee][Mm][Ee]|[Ss][Aa][Mm][Pp][Ll][Ee]|[Dd][Uu][Mm][Mm][Yy]|[Pp][Aa][Ss][Tt][Ee]|[Tt][Oo][Dd][Oo]|[Xx][Xx][Xx])[A-Za-z\\-]*(?![A-Za-z0-9_\\-+/=~.]))'
+        # The change of 2026-09-05: weak arm only, same reason as the exclusion above.
+        '(?![0-9]{1,7}(?![A-Za-z0-9_.\\-]))'
+        # THE PLACEHOLDER VOCABULARY, AND THE TAIL THAT MADE IT WRONG.
+        #
+        # Inherited from CREDENTIAL_ASSIGN, where it is right: `your-api-key`
+        # and `changeme` really are placeholders, and a token that starts with
+        # one is documentation.
+        #
+        # The tail after the word is the whole argument. It used to be
+        # [A-Za-z0-9_\-]*, which runs over digits, so ANY value whose first
+        # syllable happened to be a placeholder word was released however real
+        # the rest of it was. Somebody's dog's name and a birth year is a
+        # placeholder by that reading. So is a capitalised English word that
+        # starts with the letters of `todo`. So is a real password with `xxx`
+        # written round it, which people do.
+        #
+        # The tail is [A-Za-z\-]* now: a placeholder word counts when the value
+        # is WORDS. `your-password-here`, `changeme` and `dummy` are still
+        # released, which is the case this guard exists for, and a value that
+        # glues a placeholder word to entropy is not.
+        #
+        # This was a false-negative bug, not a trade. It was found by a critic
+        # asked to refute the claim that the guards could not be separated, and
+        # it had been written into the comment here as an accepted cost by the
+        # same author who wrote the guard. An accepted cost that nobody tried to
+        # remove is a defect with a note on it.
+        #
+        # Cost of the repair, measured over 119,837 third-party files: +4 files
+        # and +4 occurrences, one distinct string, a dummy value in a fixture.
+        # The change of 2026-09-05: weak arm only, same reason as the exclusion above.
+        '(?![\\^~>=<]*[0-9]+\\.[0-9]+)'
+        # Bounded to seven digits. Unbounded, this read every numeric password
+        # as a port number: an eight-or-more-digit PIN is a password, and a
+        # port, a timeout and a five-digit id are not. Same defect class as the
+        # vocabulary tail above and found in the same pass. The change of 2026-09-05: weak arm
+        # only; a prefixed `password: 1234567` is now the backstop arm's
+        # business and its accepted cost, tracked in known_false_positives.
+        #
+        # The 2026-09-09 change, second pass (2026-09-10): a repetition cap was tried and
+        # reverted here. Left unbounded on purpose: it did not fix the
+        # reachable whitespace-free case and opened a new leak on an
+        # ordinary long real passphrase. See scrub.py for the full writeup.
+        #
+        # The change of 2026-09-17: `[^\S\n]` crossed CR and U+2028/U+2029, which
+        # a real document can use as its own line ending, not just `\n` --
+        # named separator class instead. See scrub.py's copy of this tail
+        # for the full writeup and the accepted trade.
+        '\\S+(?:[\\t \\xa0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000]+\\S+)*'
+        # Strong/backstop: any prefix, then password / passwd / pwd, no
+        # separator requirement anywhere, no value-side exclusion, value to
+        # end of line. THIS is main_arm in the test suite's password-rule baseline
+        # -- it must stay the exact, unbroken final branch of this pattern.
+        '|'
+        '[A-Za-z0-9_.\\-]*(?:[Pp][Aa][Ssſ][Ssſ][Ww][Oo][Rr][Dd]|[Pp][Aa][Ssſ][Ssſ][Ww][Dd]|[Pp][Ww][Dd])[Ssſ]?(?![A-Za-z])'
+        # Quote handling, no (?![=>~:]) guard: see the note above this entry
+        # for why the guard broke a value starting with ~, =, > or :.
+        #
+        # \s* ON BOTH SIDES, NOT [ \t]*(?:\r?\n[ \t]*)*, AND THIS IS NOT
+        # COSMETIC. A critic caught this arm shipping with the WEAK arm's
+        # explicit space/tab/CRLF-only spelling instead of the old bare arm's
+        # bare `\s*`, which quietly dropped 25 codepoints this arm always
+        # covered: NBSP, the other Unicode spaces (U+2000-200A, U+202F,
+        # U+205F, U+1680, U+3000), U+2028/U+2029, bare CR, VT, FF and
+        # U+001C-001F. `password:<NBSP>Tr0ub4dor&3` -- what you get pasting a
+        # config line out of Word, Notion, Confluence or a rendered web page
+        # -- was refused before this rule existed and passed straight through
+        # while it shipped, in all three engines, because parity compares
+        # regex SOURCE and both copies had made the identical mistake. Caught
+        # by corpus fuzzing, not by the corpus itself: 120,248 real files are
+        # npm tarballs and node_modules, which structurally cannot contain
+        # these characters next to this keyword, so the corpus reported clean
+        # while the rule was open. `\s*` restores exactly what the old
+        # pre-union bare-keyword arm had, on the arm that inherited its job.
+        '[\\"\'`]?\\s*[:=]\\s*[\\"\'`]?'
+        # The change of 2026-09-05: reads to the end of the physical line rather
+        # than stopping at the first space, so a space-separated passphrase is
+        # not redacted one word deep, leaving the rest of it exposed. Same fix
+        # as the weak arm's copy above. Deliberately [ \t] here, not \s: this
+        # is INSIDE the value, where swallowing a newline would merge two
+        # separate lines' worth of text into one reported match.
+        #
+        # The 2026-09-09 change, second pass (2026-09-10): a repetition cap was tried and
+        # reverted here too. Left unbounded on purpose; see scrub.py for the
+        # full writeup.
+        #
+        # The change of 2026-09-17: `[^\S\n]` crossed CR and U+2028/U+2029, which
+        # a real document can use as its own line ending, not just `\n` --
+        # named separator class instead. See scrub.py's copy of this tail
+        # for the full writeup and the accepted trade.
+        '\\S+(?:[\\t \\xa0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000]+\\S+)*'
+        ')'
+        # THERE IS DELIBERATELY NO EXCLUSION FOR A VALUE NAMED LIKE A PASSWORD,
+        # and it was written and then taken out again rather than never tried.
+        # An identifier ending in the trigger word is usually a reference rather
+        # than a value: ADD_PASSWORD: "add_password", certPassword:
+        # certificatePassword. Excluding those cost 46 files of the 119,708, but
+        # it also refused correct-horse-password, correct_horse_password and
+        # CorrectHorsePassword, which are passwords, and it silenced the
+        # fixture's own second plant. A test that has to be edited to fit a new
+        # rule is the test telling you about the rule.
+        #
+        # The change of 2026-09-05: reads to the end of the physical line rather
+        # than stopping at the first space, so a space-separated passphrase is
+        # not redacted one word deep, leaving the rest of it exposed. Both arms
+        # carry this fix.
+        ')'
+    )),
     # A database URL carrying a password. Nothing else here sees this shape:
     # the EMAIL rule hits it by accident on the user:pass@host middle, and a
     # form with no @-shaped middle was caught nowhere.
@@ -362,11 +640,11 @@ SECRETS = [
     #
     # The password is bounded because the unbounded form was quadratic. A bound
     # is a trade and this one is deliberate.
-    ("a database URL carrying a password", re.compile(r"\b[a-z][a-z0-9+.\-]{0,31}://[^\s:/@]+:(?!<(?:[Rr][Ee][Dd][Aa][Cc][Tt][Ee][Dd]|[Ss][Cc][Rr][Uu][Bb][Bb][Ee][Dd]|[Rr][Ee][Mm][Oo][Vv][Ee][Dd]|[Hh][Ii][Dd][Dd][Ee][Nn]|[Mm][Aa][Ss][Kk][Ee][Dd]|[Ee][Ll][Ii][Dd][Ee][Dd]|[Oo][Mm][Ii][Tt][Tt][Ee][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Yy][Oo][Uu][Rr][-_]?[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Xx]+|\*+)(?:[:_ -][A-Za-z]+)*[-_0-9]*>@|\[(?:[Rr][Ee][Dd][Aa][Cc][Tt][Ee][Dd]|[Ss][Cc][Rr][Uu][Bb][Bb][Ee][Dd]|[Rr][Ee][Mm][Oo][Vv][Ee][Dd]|[Hh][Ii][Dd][Dd][Ee][Nn]|[Mm][Aa][Ss][Kk][Ee][Dd]|[Ee][Ll][Ii][Dd][Ee][Dd]|[Oo][Mm][Ii][Tt][Tt][Ee][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Yy][Oo][Uu][Rr][-_]?[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Xx]+|\*+)(?:[:_ -][A-Za-z]+)*[-_0-9]*\]@|\*+@|\$\{[A-Za-z_][A-Za-z0-9_]*\}@|\$[A-Za-z_][A-Za-z0-9_]*@)[^\s:/@]{3,}@[^\s/]+")),
+    ("a database URL carrying a password", re.compile(r"\b[A-Za-z][A-Za-z0-9+.\-]{0,31}://[^\s:/@]*:(?!<(?:[Rr][Ee][Dd][Aa][Cc][Tt][Ee][Dd]|[Ss][Cc][Rr][Uu][Bb][Bb][Ee][Dd]|[Rr][Ee][Mm][Oo][Vv][Ee][Dd]|[Hh][Ii][Dd][Dd][Ee][Nn]|[Mm][Aa][Ss][Kk][Ee][Dd]|[Ee][Ll][Ii][Dd][Ee][Dd]|[Oo][Mm][Ii][Tt][Tt][Ee][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Yy][Oo][Uu][Rr][-_]?[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Xx]+|\*+)(?:[:_ -][A-Za-z]+)*[-_0-9]*>@|\[(?:[Rr][Ee][Dd][Aa][Cc][Tt][Ee][Dd]|[Ss][Cc][Rr][Uu][Bb][Bb][Ee][Dd]|[Rr][Ee][Mm][Oo][Vv][Ee][Dd]|[Hh][Ii][Dd][Dd][Ee][Nn]|[Mm][Aa][Ss][Kk][Ee][Dd]|[Ee][Ll][Ii][Dd][Ee][Dd]|[Oo][Mm][Ii][Tt][Tt][Ee][Dd]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Yy][Oo][Uu][Rr][-_]?[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Xx]+|\*+)(?:[:_ -][A-Za-z]+)*[-_0-9]*\]@|\*+@|\$\{[A-Za-z_][A-Za-z0-9_]*\}@|\$[A-Za-z_][A-Za-z0-9_]*@)[^\s:/@]{3,}@[^\s/]+")),
     # SendGrid. Named because its value is three dot-separated segments, the
     # exact shape the credential rule below now refuses so that it stops
     # matching ordinary code like forge.random.getBytesSync.
-    ("a SendGrid key",              re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\b")),
+    ("a SendGrid key",              re.compile(r"(?<![A-Za-z0-9])SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}(?![A-Za-z0-9])")),
     # Context-anchored, so that this file is a second line of defence behind the
     # scrubber rather than a weaker copy of it.
     #
@@ -399,22 +677,50 @@ SECRETS = [
         # matched STRINGS over the whole corpus, not just the same counts.
         r"(?<![A-Za-z0-9_.\-])"
         r"(?:"
-        r"[A-Za-z0-9_.\-]*(?:[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]"
-        r"|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Uu][Tt][Hh]"
-        r"|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Pp][Aa][Ss][Ss][Pp][Hh][Rr][Aa][Ss][Ee])s?"
-        r"|[A-Za-z0-9_.\-]*[Aa][Pp][Ii][_\-]?[Kk][Ee][Yy]s?"
-        r"|[A-Za-z0-9_.\-]*[a-z0-9]Keys?"
-        r"|[A-Za-z0-9_.\-]*[_\-.][Kk][Ee][Yy]s?"
+        r"[A-Za-z0-9_.\-]*(?:[Aa][Uu][Tt][Hh][Oo][Rr][Iiİı][Zz][Aa][Tt][Iiİı][Oo][Nn]"
+        r"|[Tt][Oo][KkK][Ee][Nn]|[Ssſ][Ee][Cc][Rr][Ee][Tt]|[Aa][Uu][Tt][Hh]"
+        r"|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Iiİı][Aa][Ll]|[Pp][Aa][Ssſ][Ssſ][Pp][Hh][Rr][Aa][Ssſ][Ee])[Ssſ]?"
+        r"|[A-Za-z0-9_.\-]*[Aa][Pp][Iiİı][_\-]?[KkK][Ee][Yy][Ssſ]?"
+        r"|[A-Za-z0-9_.\-]*[a-z0-9][KK]ey[Ssſ]?"
+        r"|(?!(?:[Cc][Aa][Cc][Hh][Ee]|[Ss][Oo][Rr][Tt]|[Pp][Aa][Rr][Tt][Ii][Tt][Ii][Oo][Nn]"
+        r"|[Ii][Dd][Ee][Mm][Pp][Oo][Tt][Ee][Nn][Cc][Yy]|[Ff][Oo][Rr][Ee][Ii][Gg][Nn])"
+        r"[_\-.][KkK][Ee][Yy][Ssſ]?(?![A-Za-z0-9_.\-]))[A-Za-z0-9_.\-]*[_\-.][KkK][Ee][Yy][Ssſ]?"
         r")(?![A-Za-z])"
         r"[\"']?\s*[:=]\s*(?:Bearer\s+)?[\"']?"
-        r"(?!(?:[A-Za-z_][A-Za-z0-9_]*\.)+[A-Za-z_][A-Za-z0-9_]*(?![A-Za-z0-9_\-+/=~.]))"
+        r"(?!(?![A-Za-z0-9_.]*?(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]*[0-9])[A-Za-z0-9_]{16,})(?:[A-Za-z_][A-Za-z0-9_]*\.)+[A-Za-z_][A-Za-z0-9_]*(?![A-Za-z0-9_\-+/=~.]))"
         r"(?!(?:[Yy][Oo][Uu][Rr]|[Mm][Yy]|[Ii][Nn][Ss][Ee][Rr][Tt]|[Rr][Ee][Pp][Ll][Aa][Cc][Ee]"
         r"|[Ee][Xx][Aa][Mm][Pp][Ll][Ee]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]"
         r"|[Cc][Hh][Aa][Nn][Gg][Ee][Mm][Ee]|[Ss][Aa][Mm][Pp][Ll][Ee]|[Dd][Uu][Mm][Mm][Yy]"
         r"|[Pp][Aa][Ss][Tt][Ee]|[Tt][Oo][Dd][Oo]|[Xx][Xx][Xx])[A-Za-z0-9_\-]*(?![A-Za-z0-9_\-+/=~.]))"
         r"(?![A-Za-z0-9_\-+/=~.]{0,128}[_\-]?[Hh][Ee][Rr][Ee](?![A-Za-z0-9_\-+/=~.]))"
         r"(?![A-Za-z0-9_\-+/=~.]{0,128}/[A-Za-z0-9_\-+/=~.]{0,128}\.[A-Za-z]{2,5}(?![A-Za-z0-9_\-+/=~.]))"
-        r"[A-Za-z0-9_\-+/=~.]{20,}[\"']?")),
+        # The change of 2026-09-09: everything above is the TRIGGER, unchanged.
+        # `(?:[^\S\n]+\S+)*` extends the redacted MATCH once the
+        # 20-character gate has already fired: separator (any whitespace
+        # but `\n`), then a non-whitespace run, repeated. First attempt was
+        # `(?:[ \t]+\S+)*` (PASSWORD_ASSIGN's own shape) -- a critic broke
+        # it before it landed, any Unicode whitespace separator (NBSP, EN
+        # SPACE, a bare CR, U+2028) stopped it without stopping the rule's
+        # own notion of "line" (`\n` only). Second attempt, `[^\n]*`,
+        # closed that but over-corrected: it swallows unconditionally to
+        # the next `\n`, so a one-line JSON blob lost its trailing fields
+        # after the credential -- the critic caught that too. This shape
+        # keeps the token-repetition structure (which stops naturally at a
+        # comma right after a closing quote, same as PASSWORD_ASSIGN always
+        # has) while widening only the separator, closing the leak without
+        # the over-redaction. See scrub.py's copy for the full reasoning
+        # and PASSWORD_ASSIGN's own unfixed copy of the same gap, filed
+        # separately.
+        #
+        # The 2026-09-09 change, second pass (2026-09-10): a repetition cap was tried and
+        # reverted here too. Left unbounded on purpose; see scrub.py for the
+        # full writeup.
+        #
+        # The change of 2026-09-17: `[^\S\n]` crossed CR and U+2028/U+2029, which
+        # a real document can use as its own line ending, not just `\n` --
+        # named separator class instead. See scrub.py's copy of this tail
+        # for the full writeup and the accepted trade.
+        r"[A-Za-z0-9_\-+/=~.]{20,}[\"']?(?:[\t \xa0\u1680\u2000-\u200a\u202f\u205f\u3000]+\S+)*")),
     # ── Vendor prefixes, added 2026-08-31 ────────────────────────────────────
     #
     # Eight credential shapes over the seven rules below. Every one of them
@@ -446,15 +752,42 @@ SECRETS = [
     # engines, and it is also strictly more sensitive than Python's \b. Every
     # rule below uses it, so this block adds nothing to that pile.
     #
-    # The trailing (?![A-Za-z0-9_]) excludes the underscore deliberately. It is
-    # what keeps an ordinary snake_case identifier such as
-    # hf_<32 chars>_cache from matching, and on the legacy Notion rule it is
-    # load bearing: the underscore in the lookbehind is why client_secret_...,
-    # AWS_SECRET_ACCESS_KEY and my_secret_token_value cannot match at all, rather
-    # than merely being unlikely to. secret_ reads as a weak prefix in English
-    # and behaves as a strong one here, because the two properties that make it
-    # common in prose, a leading underscore run and an underscore-broken tail,
-    # are the two the pattern excludes.
+    # FOLLOW-UP OF 2026-09-22, SUPERSEDES THE PARAGRAPH BELOW. This
+    # block used to exclude `_` on both sides, the same shape the change of 2026-09-22 found
+    # and removed from the other nine prefix rules: "OPENAI_sk-proj-<key>"
+    # passed because `_` is a word character and the old `\b` found no
+    # boundary there. These six were the last holdouts, so a token wrapped
+    # in underscores (markdown italics `_ntn_xxx_`, or glued to a preceding
+    # identifier) still passed. The ruling: drop the exclusion here too.
+    #
+    # The paragraph below claimed the exclusion was load-bearing for THREE
+    # examples. Measured, not two of three: AWS_SECRET_ACCESS_KEY and
+    # my_secret_token_value still cannot match with the exclusion gone,
+    # because neither has 32+ contiguous alphanumeric characters after
+    # secret_ (both hit an underscore within a few characters), so the
+    # CLASS excludes them, not the boundary. Only client_secret_<32+ chars>
+    # actually depended on the boundary, and that is exactly a real OAuth
+    # client secret glued into a variable name: the thing this rule exists
+    # to catch, not a false positive. Measured on the 165-capture real-owner
+    # corpus (fence_census.ref_corpus() plus replays plus real-owner
+    # captures, same method as the
+    # measurement of 2026-09-21): 0 of 165 rows change. Across every
+    # git-tracked file in both repositories (1,579 files): 0 new matches.
+    # Three fixture probes flip from must_not_fire to must_fire (an hf_
+    # token wrapped in a snake_case identifier on either side, and the
+    # client_secret_ case); see the finding for this change.
+    #
+    # ORIGINAL REASONING, KEPT FOR THE RECORD OF WHAT WAS BELIEVED AND WHY
+    # IT WAS WRONG ABOUT TWO OF ITS THREE EXAMPLES. The trailing
+    # (?![A-Za-z0-9_]) excludes the underscore deliberately. It is what
+    # keeps an ordinary snake_case identifier such as hf_<32 chars>_cache
+    # from matching, and on the legacy Notion rule it is load bearing: the
+    # underscore in the lookbehind is why client_secret_...,
+    # AWS_SECRET_ACCESS_KEY and my_secret_token_value cannot match at all,
+    # rather than merely being unlikely to. secret_ reads as a weak prefix
+    # in English and behaves as a strong one here, because the two
+    # properties that make it common in prose, a leading underscore run and
+    # an underscore-broken tail, are the two the pattern excludes.
     #
     # MEASURED BEFORE ADDING. Zero false positives for all seven over a corpus
     # of 18,911 third-party prose and configuration files. Zero on all 34
@@ -530,7 +863,7 @@ SECRETS = [
     # capture, comparing the finished document against what the scrub reported,
     # and not another rule here.
     ("a Notion integration token",
-     re.compile(r"(?<![A-Za-z0-9_])ntn_[A-Za-z0-9]{40,}(?![A-Za-z0-9_])")),
+     re.compile(r"(?<![A-Za-z0-9])ntn_[A-Za-z0-9]{40,}(?![A-Za-z0-9])")),
     # Notion's legacy format. The bound is a judgement, not a measurement: the
     # canonical length is documented as 43 and nobody here has verified that
     # against Notion. It is written open and BELOW the documented length on
@@ -538,22 +871,22 @@ SECRETS = [
     # Measured identical at zero false positives at every bound from {20,} to
     # {43}, so unlike ntn_ there is no cliff to fall off here.
     ("a legacy Notion integration token",
-     re.compile(r"(?<![A-Za-z0-9_])secret_[A-Za-z0-9]{32,}(?![A-Za-z0-9_])")),
+     re.compile(r"(?<![A-Za-z0-9])secret_[A-Za-z0-9]{32,}(?![A-Za-z0-9])")),
     # Live and restricted only. sk_test_ and rk_test_ are deliberately absent:
     # they are not secrets, and matching them would refuse ordinary Stripe
     # documentation. Note this is NOT caught by the OpenAI-style rule above,
     # which requires sk- with a hyphen.
     ("a Stripe secret key",
-     re.compile(r"(?<![A-Za-z0-9_])(?:sk|rk)_live_[A-Za-z0-9]{20,}(?![A-Za-z0-9_])")),
+     re.compile(r"(?<![A-Za-z0-9])(?:sk|rk)_live_[A-Za-z0-9]{20,}(?![A-Za-z0-9])")),
     # Anchored on the literal host, so it needs no boundary rule of its own and
     # has no length axis before the final segment. Every quantifier is followed
     # by a character outside its own class, so there is no backtracking site.
     ("a Slack webhook URL",
-     re.compile(r"hooks\.slack\.com/services/T[A-Za-z0-9]+/B[A-Za-z0-9]+/[A-Za-z0-9]{20,}")),
+     re.compile(r"[Hh][Oo][Oo][Kk][Ss]\.[Ss][Ll][Aa][Cc][Kk]\.[Cc][Oo][Mm](?::[0-9]*)?/[Ss][Ee][Rr][Vv][Ii][Cc][Ee][Ss]/[Tt][A-Za-z0-9]+/[Bb][A-Za-z0-9]+/[A-Za-z0-9]{20,}")),
     ("a Hugging Face token",
-     re.compile(r"(?<![A-Za-z0-9_])hf_[A-Za-z0-9]{32,}(?![A-Za-z0-9_])")),
+     re.compile(r"(?<![A-Za-z0-9])hf_[A-Za-z0-9]{32,}(?![A-Za-z0-9])")),
     ("a Linear API key",
-     re.compile(r"(?<![A-Za-z0-9_])lin_api_[A-Za-z0-9]{36,}(?![A-Za-z0-9_])")),
+     re.compile(r"(?<![A-Za-z0-9])lin_api_[A-Za-z0-9]{36,}(?![A-Za-z0-9])")),
     # TWILIO IS DELIBERATELY ABSENT, and this comment is here so that the next
     # person to notice the absence does not close it.
     #
@@ -571,7 +904,7 @@ SECRETS = [
     # Twilio is not covered here, cannot be covered by a prefix rule, and the
     # honest place for it is the owner-facing scrub review.
     ("an Airtable personal access token",
-     re.compile(r"(?<![A-Za-z0-9_])pat[A-Za-z0-9]{14}\.[0-9a-f]{64}(?![A-Za-z0-9_])")),
+     re.compile(r"(?<![A-Za-z0-9])pat[A-Za-z0-9]{14}\.[0-9a-f]{64}(?![A-Za-z0-9])")),
 ]
 
 
@@ -632,7 +965,8 @@ def check(text):
 
     comments = ["line %d: HTML comment" % (i + 1)
                 for i, line in enumerate(lines)
-                if "<!--" in line and INSTALLER_PLACEHOLDER not in line]
+                if not inside[i]  # fenced content is text, as in the tag scan above
+                and "<!--" in line and INSTALLER_PLACEHOLDER not in line]
     if comments:
         out.append(("E_HTML", comments[:20]))
 

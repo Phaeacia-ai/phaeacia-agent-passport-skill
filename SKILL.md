@@ -8,6 +8,8 @@ compatibility: Requires Python 3.7 or newer
 
 You are reading an agent's own files to produce one Markdown file that describes it well enough for a stranger, on a different platform, to rebuild a working version with their own accounts. The owner of the agent is sitting with you. Call them **the owner**.
 
+**If the owner is not sitting with you**, because whoever started you says the owner will not answer (a batch, a scheduled job, a caller capturing on their behalf), read *Unattended mode* at the end of this file now, before step 0. It changes where files are written and steps 0, 5, 6, 7, 9 and 10, it replaces every question in this file with a recorded default, and it ends somewhere different: at a file nobody has reviewed, not at a link.
+
 ## What you are doing, and what you are not
 
 You are writing a description of a **function**, not a copy of an implementation. The passport carries structure, intent, evidence and questions. It carries no code, no configuration values, and no secrets.
@@ -83,7 +85,9 @@ Classify every path into one of six roles. Classify by role, never by name: a sc
 | outputs and logs | what the agent produced on past runs |
 | denied | see below |
 
-**Deny list, checked before any read:** directories with `0700` permissions, `.env*`, `credentials*`, anything matching `*token*` or `*secret*`, `*.pem`, `*.key`, browser or session profile directories, bulk data caches, and any path the owner names as off limits. Denied paths are recorded in the scrub note **by role only** ("a browser profile directory, not read"), never by name, and their contents never enter your context.
+**Deny list, checked before any read:** directories with `0700` permissions, `.env*`, `credentials*`, anything matching `*token*` or `*secret*`, `*.pem`, `*.key`, `*-passport.link.md`, `*-passport.md`, `*-run-report.md`, `corrections.tsv`, browser or session profile directories, bulk data caches, and any path the owner names as off limits. Denied paths are recorded in the scrub note **by role only** ("a browser profile directory, not read"), never by name, and their contents never enter your context.
+
+The last four are this tool's own leavings, and they are on the list because a **second** capture of a folder you have already captured is the ordinary case, not the exotic one. `<name>-passport.link.md` is written beside the passport by the publish step and holds the delete token twice, once bare and once inside the management URL. That token is the only thing that can withdraw a published passport, it cannot be reissued, and nothing else on this list matches that filename: it is not `*token*`, not `*secret*`, not `.env*`. Read it back into a new capture and the passport you are about to publish carries the previous passport's delete token to whoever you send it to. `<name>-passport.md` and `corrections.tsv` are denied for the weaker reason that a passport is a description of the agent rather than the agent, and re-reading one launders last time's guesses into this time's evidence. `<name>-run-report.md` is what an unattended run leaves (see *Unattended mode*), and it is denied for the stronger reason: its scrub review quotes the values the passport replaced, in context.
 
 Keep the classification and the denied list; the owner sees the denied entries, by role, at the check-in (step 7). Do not stop to present the inventory now. If the owner volunteers a correction at any point, take it.
 
@@ -105,7 +109,7 @@ Budget the reading, because the owner is sitting there watching nothing happen. 
 
 ## Step 3. Fill the schema
 
-**Nothing is written to a file in this step, or in any step before 9.** Fill the schema in your notes. You are about to hand the owner a screen that can change the goal, the name, half the confidence tags and the slot list, and a draft written before those answers gets rewritten from itself rather than from them: the work is done twice, and the second pass quietly keeps the first pass's wrong assumptions, because editing a draft feels like progress. Hold it in your head and in your notes until step 9.
+**Nothing of the passport is written to a file in this step, or in any step before 9.** The only files written before step 9 are step 6's scratch files, which go in a temporary directory and are gone by the end of step 9. Fill the schema in your notes. You are about to hand the owner a screen that can change the goal, the name, half the confidence tags and the slot list, and a draft written before those answers gets rewritten from itself rather than from them: the work is done twice, and the second pass quietly keeps the first pass's wrong assumptions, because editing a draft feels like progress. Hold it in your head and in your notes until step 9.
 
 Open `references/spec-schema.md` and fill the functional spec block field by field. Rules:
 
@@ -137,10 +141,10 @@ The test: **would copying this value into a stranger's install be wrong, embarra
 
 ## Step 5. Golden examples
 
-Take the newest file from an outputs-classified location, and a second or third only when the agent has modes that produce visibly different shapes. If there are none, say so in the passport rather than inventing an example, and note that the install will have nothing to compare against.
+Take the newest file from an outputs-classified location, and a second or third only when the agent has modes that produce visibly different shapes. If there are none, say so in the passport rather than inventing an example, and note that the install will have nothing to compare against. An unattended run handles this case differently (see *Unattended mode*).
 
 - **Verbatim from real output files.** A golden example is a direct slice of an actual saved output from a previous run. Never synthesize, generate or invent one, not a news item, not a job posting, not a number.
-- **Scrubbing and elision only.** Apply the step 6 scrub. If the output is long, elide middle items and state the exact rule above the block: "items four through eleven removed, shape preserved". Diff the block against the source file before finalizing: nothing may differ beyond scrubbing and the stated elision.
+- **Scrubbing and elision only.** Apply the step 6 scrub. If the output is long, elide middle items and state the exact rule above the block: "items four through eleven removed, shape preserved". Elision is for length and nothing else: the rule picks items by position, never by whether they name someone, and an item you would have to scrub stays in and gets its marker. Diff the block against the source file before finalizing: nothing may differ beyond scrubbing and the stated elision.
 - **Say what was filled in.** Directly above each block, a blockquote naming the slot-bound values that this particular example instantiated, so the reader can tell a slot answer from a fixed part of the shape. If a `declared_only` capability rendered something into the real output, say whether it was scrubbed or excluded.
 
 Write, in the section body, that these are **templates of shape, never expected content**. The person installing will run this agent on a different day, from different data.
@@ -150,6 +154,8 @@ Write, in the section body, that these are **templates of shape, never expected 
 Two passes, in order:
 
 1. **Regex pass.** Run `"${SKILL_DIR:?resolve this skill folder first, see the rules at the top}/scripts/scrub.py" INPUT OUTPUT REPORT` over every text you intend to include. **All three arguments are required**; with fewer it prints its usage and does nothing. It catches key shapes, tokens, JWTs, email addresses, IPs, tokenised URLs, password assignments and high-entropy strings.
+
+   INPUT, OUTPUT and REPORT are scratch, not the passport: an extract you cut from a real output, the scrubbed copy, and the findings. Put all three in one temporary directory outside the agent's folder and outside the passport's destination (`mktemp -d` makes one), and delete that directory once step 9 has written the passport. INPUT holds the unscrubbed original and REPORT holds the start of every value it removed, so none of them is ever left beside the passport or in the agent's folder.
 
    **Then open REPORT and read it.** It is JSON with a `findings` list. Most
    entries record a removal and need no action. **Two types do not, and they are
@@ -174,6 +180,8 @@ Two passes, in order:
    as a list of successes is worse than not running the script, because it ends
    in false confidence rather than in none.
 2. **Your pass.** The script cannot see what you can: personal names, employer names, client names, internal hostnames and project code names, street addresses, phone numbers, provider or product names outside `source_stack`, tracking or syndication tokens in URL query strings (strip query strings from example URLs unless they are plainly structural), anything that identifies the owner or a third party. Replace each with `[SCRUBBED:TYPE]`. When in doubt, replace: the owner can restore a value at review, but a value kept pending review ships if they never answer.
+
+**A value leaves the passport through a marker and no other way.** Not by cutting the line it sits on, not by `…`, `[…]` or an elision rule, not by a plain bracketed label or a `{…}` placeholder, not by paraphrasing the sentence around it, not by stripping a query string without a marker, and not by leaving the example that holds it out of section 4. Every one of those hides the redaction from the scrub review below and from the validator's scrub gate, so a passport that had something removed reads as one that had nothing to remove, and the one signal that a person must look before it is shared is gone. This rule is about text you quote from the agent's files or outputs. In prose you write yourself, a value that belongs to someone is never written in the first place (the third rule at the top of this file), and leaving it out is not a redaction. A marker `scrub.py` inserted on a value you believe is public stays until the owner restores it; list it at the check-in instead of undoing it.
 
 Collect every replacement you made, with enough surrounding context to judge each one, **plus every report entry that was NOT a replacement** (see the two types above), plus the denied paths from step 1 by role only. That list is the gate at the check-in, and the passport is not shareable until the owner has cleared it there.
 
@@ -230,7 +238,7 @@ The bold line is the header, short because the tool caps it at twelve characters
 
 **A second pop-up, after the answers land.** Group identical replacements into one line per type with a count and one example ("4 email addresses to [SCRUBBED:EMAIL]"); show surrounding context only for the replacements that genuinely need the owner's judgment, a name that might be public, a hostname that might be generic, and offer the full list on request. Denied paths one line each, by role, in the owner's terms ("a folder holding logins, not opened"). A scrub that found nothing is one line saying so, and it is still a gate.
 
-The options are the decision, not a yes: "Looks right, share it" / "Put something back, I'll say which" / "Show me the full list first". If they ask for the list, print it and ask again. Until they choose the first, the passport is not shareable and step 9 does not run. Unattended mode is the only exception.
+The options are the decision, not a yes: "Looks right, share it" / "Put something back, I'll say which" / "Show me the full list first". If they ask for the list, print it and ask again. Until they choose the first, the passport is not shareable and step 9 does not run. An unattended run writes this pop-up into its report instead of showing it, and goes on to step 9 with the gate still closed (see *Unattended mode*).
 
 ### Part 4, the publishing ask
 
@@ -244,11 +252,13 @@ Take the answer as given. Do not argue with a no, and do not ask again later.
 
 If the owner actively reviews and confirms: frontmatter `scrub` reads `"regex+llm, owner-reviewed"`, `owner_confirmed` is `true`, and the spec block's `confirmed_by_owner` is `true`. Corrected values update the schema with confidence raised. Owner additions go into `tacit_notes` labelled as owner voice.
 
-When capture runs in an automated loop or the owner is not present: frontmatter sets `owner_confirmed: false` and `scrub: "regex+llm"`, the spec block sets `confirmed_by_owner: false`, and the run's report records the verbatim check-in that would have been shown, summary text then both pop-ups, every question with its options, so an auditor can inspect the question quality and the slot choices. Nobody is there to clear the scrub gate, so record it and do not wait on it: an unattended run must never deadlock on a gate no one can answer. It still never publishes. It ends at step 9 with the file, and `owner_confirmed: false` is exactly the state that says the gate was never cleared, which the page and every installer surface.
+When the owner is not present, *Unattended mode* at the end of this file says what is recorded instead.
 
-**Log every correction, without narrating it.** Append one tab-separated line per correction to `corrections.tsv`, next to the passport, with these columns in this order:
+**Log every correction, without narrating it.** At step 9, append to `corrections.tsv` next to the passport, one tab-separated line per correction. If the file is not there yet, start it with a header line first: these nine column names, in this order, tab-separated. If it is already there, an earlier capture of this folder wrote it, header included, so append below what it holds without reading it (step 1 denies it) and without a second header. End every line you write, the header included, with a newline, because the next capture appends without looking at how this one ended:
 
 `agent_role`, `capture_path`, `field` (dotted, e.g. `inputs[1].criticality`), `capture_said` (verbatim, one line), `owner_said` (verbatim, one line), `class`, `capture_confidence`, `flagged`, `severity`.
+
+When the owner reviewed and corrected nothing and the file is new, it is the header line alone. That is a result, not an empty log: it says someone looked and found nothing wrong. For the same reason an unattended run writes no `corrections.tsv` at all, because nobody looked.
 
 `class` is one of `comprehension` (you read the files and understood wrong), `environment` (you read correctly, the files simply do not contain it), `vocabulary` (you understood it and the schema had nowhere to put it), `scrub`, `other`. `flagged` is `yes` if you had already raised that field as uncertain, `no` if you were quietly wrong: that column is the one that says whether your confidence tags mean anything. `severity` is `breaks_install`, `degrades_output` or `cosmetic`.
 
@@ -262,7 +272,7 @@ From the goal, the capabilities and `comparison_mode`, write two to four concret
 - **About shape, counts, freshness and whether the right inputs were read, never about specific content.** A brief: "each topic has at least two items", "items dated within a day of the run time". A summariser of private data: "every summarised item exists in the source". A formatter: "same input reproduces the golden byte-shape".
 - **Let optional things be absent.** If a section depends on an optional slot, or on there being enough data to report at all, phrase the check to permit that section to be omitted or replaced by the empty-state notice the spec states.
 - **No comparison against an earlier run unless `state:` is declared** (step 3). This is enforced, not advised.
-- **Test each check against your own golden example** before keeping it, dates aside. A check the golden example fails is miswritten.
+- **Test each check against your own golden example** before keeping it, dates aside. A check the golden example fails is miswritten. With no golden example (step 5), test it against the output as section 3 describes it, and write no check that only a saved output could confirm.
 
 You write these because you are the only step that understands this agent. The installer never invents criteria.
 
@@ -272,14 +282,16 @@ This is the first time anything is written to disk, and it happens with the chec
 
 Fill `references/passport-template.md`. **Leave section 5 as the placeholder line it already contains** and leave section 6 as the empty losses template. The installer text is product-owned and versioned separately: it is inserted when the passport is published, so a passport carrying its own copy carries a copy that goes stale.
 
-Write the file to the agent's own folder as `<name>-passport.md` (or the requested destination), then run both checks:
+Write the file to the agent's own folder as `<name>-passport.md` (or the requested destination). An unattended run writes only to the destination its caller named and never overwrites an earlier capture there (see *Unattended mode*). Write `corrections.tsv` beside it (step 7), then run both checks:
 
 ```bash
 python3 "${SKILL_DIR:?resolve this skill folder first, see the rules at the top}/scripts/validate.py" <passport-path>
 python3 "${SKILL_DIR:?resolve this skill folder first, see the rules at the top}/scripts/preflight.py" <passport-path>
 ```
 
-They answer different questions and do not overlap: `validate.py` checks the format, `preflight.py` checks what the publishing endpoint refuses on sight. Fix what they report. Both must pass, and step 10 does not run until they do.
+They answer different questions and do not overlap: `validate.py` checks the format, `preflight.py` checks what the publishing endpoint refuses on sight. Fix what they report. Both must pass, and step 10 does not run until they do. On an unattended run two reports are not yours to fix, because the fix would be to hide something: `FAIL 7`, and `FAIL 8` on an agent with no saved output. *Unattended mode* says how that run ends.
+
+Then delete step 6's scratch directory, after anything that still needs it, such as an unattended run's report, is written.
 
 ## Step 10. Publish and hand over
 
@@ -312,3 +324,38 @@ Close with three lines and no more: the link, where the link file is and why it 
 - **The agent writes to the world.** Capture the capability as `declared_only`. The passport still describes it; the installer will not install it. This is the one line allowed past the summary cap in Part 1, and it is said plainly and up front, not as a footnote after the fact: name what it does and say the colleague's copy will not do it ("it also files these into your tracker; the copy they get will show them the list instead"). Never the word `declared_only`. An input or output component that surfaces only through that capability rides it: mark it as such on its row, and never fold it into the installable output.
 - **There are no outputs anywhere.** Ask whether the agent has ever run, in the step 7 pop-up, as one of the three beside the goal check. An agent that has never produced anything can still be captured, but say so in the passport.
 - **The owner asks you to include a value you called a slot.** Explain once what happens when a stranger installs their location or their sender list. If they insist after that, it is their passport: include it, and note in `tacit_notes` that the owner chose to ship the value.
+
+## Unattended mode
+
+You are in unattended mode when whoever started you says the owner will not answer: a batch capturing several agents, a scheduled job, a caller working on the owner's behalf. Never enter it on your own because a question looks hard to ask; with an owner present, ask.
+
+**What it produces is a draft for the owner, not a passport anyone else gets.** It never runs step 10 and never runs `publish.py`. Everything else in this file still applies; this section lists only what changes, in the order you meet it.
+
+**Before step 0: where the files go.** An unattended run writes to exactly two places: the destination its caller named, and step 6's scratch directory. If the caller named no destination, stop before reading anything: the fallback in step 9 is the agent's own working folder, and a batch that writes there leaves passports inside every agent it touched. Stops go to the caller, with the reason and the line under *Every stop ends with somewhere to take it*.
+
+**Step 0.** The caller names the agent. If the folder turns out to hold several unrelated agents, or none, do not pick one: stop, and put the step 0 question you would have asked, with its options, in the report.
+
+**Every question becomes a recorded default.** Wherever this file says to ask the owner (step 0 aside), at the check-in or under *When you get stuck*, take the reading the files support best, tag it at the confidence the evidence earns and never higher because nobody will check it, and record the question you would have asked, with its options, in the report. The defaults this file already names still hold: `comparison_mode` you are unsure of is `structural` at `low`. A pipeline with several unrelated outputs is the step 0 case and stops the same way.
+
+**Step 5: no saved output means no fence.** If step 5 finds no saved output, section 4 says so in prose, with no fenced block, and notes that the install will have nothing to compare against. `validate.py` then reports `FAIL 8` (it wants one to three blocks), and that is the honest end of the run: leave it. Do not put a notice, an example rebuilt from the printing code, or a sample you ran yourself inside a fence to pass it. The installer and the judge read every fenced block in section 4 as something the agent really produced, so a notice there becomes the shape the colleague's first run is scored against. Until the format has a way to say "no saved output", such a passport cannot be published, and the report says so.
+
+**Step 6: scrub exactly as if the owner were there.** "When in doubt, replace" is unchanged, and so is the rule that a value leaves the passport through a marker and no other way. In an unattended run that rule is the whole of the scrub gate: nobody will read the review, so a line you cut or paraphrase to avoid a marker is a redaction no person will ever know about. Leave every marker `scrub.py` inserted, including on a value you are sure is public; the report names it so the owner can restore it.
+
+**Step 7: build the whole check-in and show it to nobody.** Write all four parts exactly as you would have shown them into the report: Part 1's text, Part 2's pop-up with every question and its options, Part 3's scrub review, and Part 4's publishing ask marked "not asked: an unattended run never publishes". Then record the outcome:
+
+- frontmatter `owner_confirmed: false` and `scrub: "regex+llm"`, and the spec block's `confirmed_by_owner: false`. Never write `owner-reviewed`: nobody reviewed it.
+- `tacit_notes` carries no owner voice, because there was none. Anything you put there is labelled `capture note, not owner voice`.
+- No `corrections.tsv` (step 7 says why).
+
+**Step 9: it ends at `FAIL 7`, or at `FAIL 8` when there is no saved output.** Before writing, look at the destination: if `<name>-passport.md` or `<name>-run-report.md` is already there, stop rather than overwrite it, because it is an earlier capture. Otherwise write the passport there, then run both checks. `preflight.py` must pass, and so must every `validate.py` check except two. When the body carries any `[SCRUBBED:` marker, `validate.py` reports `FAIL 7: body contains [SCRUBBED: but scrub frontmatter lacks 'owner-reviewed'`, and that is the correct end of an unattended run: it means the passport is not shareable until the owner reviews it. Record the line and stop there. Do not change `scrub` and do not remove a marker to make it pass. `FAIL 8` on an agent with no saved output ends the run the same way (Step 5, above). If there is no marker and no other failure, `validate.py` passes, and the passport is still an unreviewed draft that this run does not share. Write the report next, and only then delete step 6's scratch directory, because the report's scrub review is built from it.
+
+**The report.** Write it to the destination as `<name>-run-report.md`, beside the passport, unless the caller named another place. It is for the owner and whoever runs the batch, never for the colleague: its scrub review quotes what was replaced, so it is never published or sent on, and a later capture never reads it (step 1). Four sections, in this order:
+
+1. **Outcome.** The passport's path, the final output of `validate.py` and `preflight.py` verbatim, and one sentence: not reviewed by the owner, so not to be shared until they have gone through the check-in below.
+2. **The check-in**, all four parts, verbatim, as above.
+3. **Decided without the owner.** Every question you would have asked outside the check-in, and every reading you took where the files were unclear: what you chose, why, and at what confidence.
+4. **What was read.** The files you read, and the denied paths by role only, as step 1 records them.
+
+Anything the caller asked for beyond this goes after the four sections, not in place of them.
+
+**The handover** goes to the caller, not to the owner, in a few lines: where the passport and the report are, the `validate.py` result, and that the owner has to review it before anyone else gets it. To review it, run this capture again with the owner present; the report's check-in shows in advance what that run will ask.

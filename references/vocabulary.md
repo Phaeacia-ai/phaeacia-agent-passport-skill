@@ -42,6 +42,8 @@ These render in the consent table with **installable: no, declared only**. They 
 
 `money.*` is a prefix, not an id: `money.transfer`, `money.trade`, `money.authorise` all validate. It is a prefix precisely so that nobody has to enumerate the ways an agent could spend someone's money before refusing to install one.
 
+One carve-out, for the consent table only and stated in full in `references/spec-schema.md` section 7: a backticked token that is exactly `money.` followed by a listed data-file extension (`money.csv`, `money.xlsx`, `money.ofx` and a short set held in one place in each implementation) is read as a filename and not as an id, unless the passport declares that exact token as a `capability_ref`, in which case it is the id it declares. The carve-out exists because an honest row reading "Read the ledger file (`money.csv`)" was once refused as an offer to move money. Anything else under the prefix is an id, whether or not the passport declares it.
+
 ## Choosing a capability at capture time
 
 1. Ask what the agent needs **from the owner**, not what the code calls. An RSS reader and a news API are both `web.fetch`. A Gmail scrape and an IMAP poll are both `email.read`.

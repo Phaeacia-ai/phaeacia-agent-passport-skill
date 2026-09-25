@@ -21,6 +21,7 @@ hazards that only show up in the assembled file:
 
 import os
 import re
+import unicodedata
 import sys
 
 PLACEHOLDER = "<!-- installer core and branches inserted on upload -->"
@@ -39,6 +40,34 @@ FORBIDDEN = [
     "browser_profile", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa",
     ".pem", ".key", ".env", "credentials/", "secrets/",
 ]
+
+# A SECOND COPY of validate.py's FORBIDDEN_STRINGS and its normalisation, and it
+# has to be a copy. In the built skill both files are siblings in
+# the skill's scripts/ folder and an import would work; in this repository
+# they are scripts/ and tools/ and it would not. Neither file takes a
+# dependency or edits sys.path to paper over that.
+#
+# What makes the copy safe is the test suite, which pins the two lists and
+# the two normalisations to identical behaviour. This check exists only to say
+# "validate.py check 9 will refuse the passport you are about to assemble", so
+# the moment the two disagree it is worse than useless: it either passes text
+# that will be refused later, or refuses text that would have been fine.
+#
+# The reasoning behind deleting noise rather than collapsing every non-alphanumeric
+# run is written out in full at validate.py's normalize_forbidden. Short version:
+# collapsing turns "credentials/" into the ordinary word "credentials" and refuses
+# references/passport-template.md, which every capture starts from.
+_FORBIDDEN_NOISE = re.compile(r"[\\`*_­​‌‍⁠﻿]")
+_FORBIDDEN_SPLIT = re.compile(r"(?<=[a-z0-9])[ \t]*\n[ \t]*(?=[a-z0-9])")
+
+
+def normalize_forbidden(text):
+    """Fold away case and the noise a denied path can hide behind.
+
+    Must stay byte-for-byte equivalent to validate.py's function of the same
+    name. The test suite fails if it does not."""
+    folded = unicodedata.normalize("NFKC", text).lower()
+    return _FORBIDDEN_SPLIT.sub("", _FORBIDDEN_NOISE.sub("", folded))
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -117,8 +146,14 @@ def check(text):
                 "which makes the assembled passport fail validate.py check 5. "
                 "Write it as prose or without the colon: %s" % (i, line.strip()[:70])
             )
+    norm_text = normalize_forbidden(text)
     for word in FORBIDDEN:
-        if word in text:
+        needle = normalize_forbidden(word)
+        # Anchored when the entry starts with punctuation: NFKC folds an
+        # ellipsis to three dots and "done...Pemberton" then matches `.pem`.
+        # Must stay identical to validate.py check 9.
+        pattern = (r"(?<=[a-z0-9])" if not needle[:1].isalnum() else "") + re.escape(needle)
+        if re.search(pattern, norm_text):
             problems.append(
                 "installer text contains the denied-path string %r, which fails "
                 "validate.py check 9 in the assembled passport" % word
@@ -164,7 +199,7 @@ def main():
     if dest:
         with open(dest, "w", encoding="utf-8") as f:
             f.write(out_text)
-        print("wrote %s (%d bytes)" % (dest, len(out_text)))
+        print("wrote %s (%d bytes)" % (dest, len(out_text.encode("utf-8"))))
     else:
         sys.stdout.write(out_text)
 
