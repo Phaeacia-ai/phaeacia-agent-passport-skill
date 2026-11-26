@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
-"""Publish a passport to the Agent Passport site and hand back its link.
+"""Publish a passport to an Agent Passport site and hand back its link.
 
 Usage: publish.py PASSPORT.md [--endpoint URL] [--unconfirmed] [--json]
+
+HOSTING AT app.phaeacia.ai IS CLOSED TO NEW UPLOADS. The project is archived and
+the hosted site stays up read-only: its upload endpoint answers HTTP 410 with
+the code `archived`. This script reports that as "hosting at app.phaeacia.ai is
+closed to new uploads; your passport file is kept locally at <path>", writes
+nothing, and exits 5. The passport file is only ever read here, never moved,
+rewritten or deleted, so a closed host costs the owner the link and nothing
+else.
+
+To publish to your own deployment of the app (the web/ directory of
+https://github.com/Phaeacia-ai/phaeacia-agent-passport), point this script at its upload
+endpoint, either with --endpoint https://<your-host>/api/upload or with the
+environment variable PHAEACIA_UPLOAD_ENDPOINT. The flag wins over the variable.
 
 On success this prints the public URL as the last line of stdout and exits 0.
 The capture skill's final step calls exactly that and opens the line it gets
@@ -46,6 +59,7 @@ import os
 import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_ENDPOINT = "https://app.phaeacia.ai/api/upload"
@@ -61,11 +75,50 @@ EXIT_UNREACHABLE = 3  # no answer at all: offline, DNS, TLS, timeout
 # passport is finished without the page", which is the right thing to say for 1,
 # 2 and 3 and a dangerous thing to say for this one, so it gets its own code.
 EXIT_PUBLISHED_UNUSABLE = 4
+# The host answered 410 Gone: it no longer accepts uploads at all. Nothing was
+# published and nothing was written. Not EXIT_REFUSED, because nothing about the
+# passport was wrong and no edit to it will change the answer; the caller should
+# hand over the file and stop rather than ask the owner to fix anything.
+EXIT_HOSTING_CLOSED = 5
+
+ENDPOINT_ENV = "PHAEACIA_UPLOAD_ENDPOINT"
+SOURCE_URL = "https://github.com/Phaeacia-ai/phaeacia-agent-passport"
 
 
 def die(message, code):
     print(message, file=sys.stderr)
     sys.exit(code)
+
+
+def host_of(endpoint):
+    """The host a reader would recognise, without scheme, port or path."""
+    return urllib.parse.urlsplit(endpoint).hostname or endpoint
+
+
+def site_of(endpoint):
+    """scheme://host[:port] of the endpoint, for pointing a person at the site."""
+    parts = urllib.parse.urlsplit(endpoint)
+    if parts.scheme and parts.netloc:
+        return "%s://%s" % (parts.scheme, parts.netloc)
+    return endpoint
+
+
+def closed_text(endpoint, passport_path, payload):
+    """What a 410 from the endpoint is reported as. The first line is fixed."""
+    lines = [
+        "hosting at %s is closed to new uploads; your passport file is kept locally at %s"
+        % (host_of(endpoint), os.path.abspath(passport_path)),
+    ]
+    # The host's own words as well, never instead: it may say where the project
+    # lives now. Code-only bodies add nothing a reader can use.
+    if isinstance(payload, dict) and isinstance(payload.get("message"), str) \
+            and payload["message"].strip():
+        lines.append(payload["message"].strip())
+    lines.append(
+        "Nothing was published and the file was not changed. To publish to your own "
+        "deployment of the app (web/ in %s), pass --endpoint "
+        "https://<your-host>/api/upload or set %s." % (SOURCE_URL, ENDPOINT_ENV))
+    return "\n".join(lines)
 
 
 def link_path_for(passport_path):
@@ -74,7 +127,7 @@ def link_path_for(passport_path):
     return base + ".link.md"
 
 
-def post(endpoint, body, ack=None):
+def post(endpoint, body, passport_path, ack=None):
     """One request. Returns (status, parsed_json_or_None, raw_text)."""
     headers = {
         "content-type": "text/markdown; charset=utf-8",
@@ -96,16 +149,16 @@ def post(endpoint, body, ack=None):
         return exc.code, safe_json(raw), raw
     except urllib.error.URLError as exc:
         die(
-            "Could not reach the passport site (%s). The passport file is finished and "
-            "valid; publishing is the only thing that did not happen. Try again when you "
-            "are online, or upload the file yourself at https://app.phaeacia.ai/upload."
-            % exc.reason,
+            "Could not reach %s (%s). The passport file is finished and valid and is "
+            "kept locally at %s; publishing is the only thing that did not happen."
+            % (host_of(endpoint), exc.reason, os.path.abspath(passport_path)),
             EXIT_UNREACHABLE,
         )
     except (ssl.SSLError, TimeoutError, OSError) as exc:
         die(
-            "The connection to the passport site failed (%s). The passport file is "
-            "finished and valid; publishing is the only thing that did not happen." % exc,
+            "The connection to %s failed (%s). The passport file is finished and valid "
+            "and is kept locally at %s; publishing is the only thing that did not happen."
+            % (host_of(endpoint), exc, os.path.abspath(passport_path)),
             EXIT_UNREACHABLE,
         )
 
@@ -174,8 +227,10 @@ def main():
     parser.add_argument("passport", help="path to the passport .md file")
     parser.add_argument(
         "--endpoint",
-        default=os.environ.get("PHAEACIA_UPLOAD_ENDPOINT", DEFAULT_ENDPOINT),
-        help="upload endpoint, for testing against a local dev server",
+        default=os.environ.get(ENDPOINT_ENV) or DEFAULT_ENDPOINT,
+        help="upload endpoint of your own deployment of the app, e.g. "
+             "https://<your-host>/api/upload (default: $%s, else %s, which is "
+             "closed to new uploads)" % (ENDPOINT_ENV, DEFAULT_ENDPOINT),
     )
     parser.add_argument(
         "--unconfirmed",
@@ -196,7 +251,9 @@ def main():
     if not body.strip():
         die("%s is empty. Nothing was published." % args.passport, EXIT_USAGE)
 
-    status, payload, raw = post(args.endpoint, body)
+    status, payload, raw = post(args.endpoint, body, args.passport)
+    if status == 410:
+        die(closed_text(args.endpoint, args.passport, payload), EXIT_HOSTING_CLOSED)
 
     if status == 409 and isinstance(payload, dict) and payload.get("code") == "E_OWNER_UNCONFIRMED":
         if not args.unconfirmed:
@@ -216,7 +273,9 @@ def main():
                 "ticket, so it cannot be published this way.",
                 EXIT_REFUSED,
             )
-        status, payload, raw = post(args.endpoint, body, ack=ticket)
+        status, payload, raw = post(args.endpoint, body, args.passport, ack=ticket)
+        if status == 410:
+            die(closed_text(args.endpoint, args.passport, payload), EXIT_HOSTING_CLOSED)
 
     if status != 200 or not isinstance(payload, dict) or not payload.get("ok"):
         die(refusal_text(payload, status, raw), EXIT_REFUSED)
@@ -227,9 +286,10 @@ def main():
                 "THE PASSPORT WAS PUBLISHED, and the response is missing %s, so it "
                 "cannot be handed over safely. A public page may exist that this run "
                 "cannot give you the link to or take down. Do not publish again: check "
-                "https://app.phaeacia.ai/upload first. Everything the response did return:\n%s"
-                % (key, json.dumps({k: v for k, v in payload.items()
-                                    if k != "delete_token"}, indent=2)),
+                "%s first. Everything the response did return:\n%s"
+                % (key, site_of(args.endpoint),
+                   json.dumps({k: v for k, v in payload.items()
+                               if k != "delete_token"}, indent=2)),
                 EXIT_PUBLISHED_UNUSABLE,
             )
 

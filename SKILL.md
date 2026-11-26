@@ -42,13 +42,13 @@ Writing the options is the work. Each option is a candidate answer in the owner'
 | "Confirm the goal statement below." | "I read this as: it tells you what moved overnight before your first meeting. Is that right?" with **Yes, that is what it is for** and **No, and here is what it actually does** |
 | "Should the output taxonomy be enumerated in full?" | Nothing. That is yours to read out of the files, not theirs to answer. |
 
-**Otherwise, silence.** The owner hears from you on three occasions: step 0, which is the line naming what you are capturing plus the question that goes with it when you have to ask; the check-in (step 7); the handover (step 10). A failed preflight is the only other, and it ends the run rather than continuing it. Everything between is silent work, and silent means silent: no step announcements, no "now reading the scheduler", no inventory listings, no findings narrated as you go, and never the passport or a section of it pasted into the chat, because it is a file and they get the page at step 10. Anything you would have said along the way belongs in the check-in or nowhere. The one thing that may arrive late is the step 0 question itself, when the files turn out to hold several unrelated agents; it is still that question, asked the same way.
+**Otherwise, silence.** The owner hears from you on three occasions: step 0, which is the line naming what you are capturing plus the question that goes with it when you have to ask; the check-in (step 7); the handover (step 10). A failed preflight is the only other, and it ends the run rather than continuing it. Everything between is silent work, and silent means silent: no step announcements, no "now reading the scheduler", no inventory listings, no findings narrated as you go, and never the passport or a section of it pasted into the chat, because it is a file and they get it at step 10. Anything you would have said along the way belongs in the check-in or nowhere. The one thing that may arrive late is the step 0 question itself, when the files turn out to hold several unrelated agents; it is still that question, asked the same way.
 
 **Every stop ends with somewhere to take it.** Whenever this file tells you to stop, give the reason and then this line, unchanged:
 
-> If this went wrong, open an issue at github.com/Phaeacia-ai/phaeacia-agent-passport-skill or write to hello@phaeacia.ai.
+> Agent Passport is archived and unsupported, so there is nobody to report this to. The source is at https://github.com/Phaeacia-ai/phaeacia-agent-passport if you want to look into it yourself.
 
-That is the whole contact story and there is no second one. It promises nothing about a reply and names no response time; it exists because an owner whose run ended on a refusal they did not expect otherwise has a message and nowhere to put it. Do not add it to the check-in or the handover, which are not stops.
+That is the whole contact story and there is no second one. It promises no reply, because there is none; it exists because an owner whose run ended on a refusal they did not expect otherwise has a message and no idea where it came from. Do not add it to the check-in or the handover, which are not stops.
 
 ## Step 0. Preflight, then find the agent
 
@@ -161,11 +161,11 @@ Two passes, in order:
    entries record a removal and need no action. **Two types do not, and they are
    the reason to open the file. Carry both to the check-in, by name:**
 
-   - `HIGH_ENTROPY_NEAR_MISS` — long enough to be a credential, wrong alphabet
+   - `HIGH_ENTROPY_NEAR_MISS`: long enough to be a credential, wrong alphabet
      to be sure, so it was **kept, in full, in the passport**. The case gate
      protects git hashes, uuids and slugs, and a single-case credential goes
      through with them.
-   - `PRIVATE_KEY_BLOCK_TRUNCATED` — a private key header with no closing line.
+   - `PRIVATE_KEY_BLOCK_TRUNCATED`: a private key header with no closing line.
      The header and the base64 run after it **were** removed, so this is a
      partial success rather than a miss; what it cannot promise is anything
      wrapped in an alphabet it does not recognise. Look at what follows it.
@@ -242,9 +242,15 @@ The options are the decision, not a yes: "Looks right, share it" / "Put somethin
 
 ### Part 4, the publishing ask
 
-In the same message, so the owner stops once and not twice:
+**Hosting at app.phaeacia.ai is closed to new uploads.** The project is archived and that site is read-only, so by default a capture ends with the passport as a file on the owner's machine. Publishing is possible only to a deployment of the app that somebody runs themselves, and it is configured by the environment variable `PHAEACIA_UPLOAD_ENDPOINT`, which holds that deployment's upload address. Check it silently before the check-in: `printenv PHAEACIA_UPLOAD_ENDPOINT`.
 
-> When this is done I can put it on a web page at app.phaeacia.ai and give you the link to send on. That page is public: anyone with the link can read it, and it deletes itself after thirty days. Shall I? If not, you get the file and can send it however you like.
+**If it is empty or unset**, Part 4 is one sentence in the same message, not a question, and the outcome is recorded as declined:
+
+> Hosting at app.phaeacia.ai is closed, so this ends with the passport as a file on your machine, which you can send however you like.
+
+**If it is set**, ask in the same message, so the owner stops once and not twice, naming the host from that address:
+
+> When this is done I can put it on a web page at <that host> and give you the link to send on. That page is public: anyone with the link can read it, and it deletes itself after thirty days. Shall I? If not, you get the file and can send it however you like.
 
 Take the answer as given. Do not argue with a no, and do not ask again later.
 
@@ -295,9 +301,9 @@ Then delete step 6's scratch directory, after anything that still needs it, such
 
 ## Step 10. Publish and hand over
 
-**If the owner declined publishing at the check-in**, hand over in one line: where the validated `.md` file is, and that whoever receives it can be given the file directly or can have it published later. Then stop. Do not ask again. (If they want a file that already carries the install instructions inside it, `scripts/assemble.py <passport> <output>` writes one.)
+**If the owner declined publishing at the check-in, or Part 4 said hosting is closed**, hand over in one line: where the validated `.md` file is, and that whoever receives it can be given the file directly or can have it published later. Then stop. Do not ask again. (If they want a file that already carries the install instructions inside it, `scripts/assemble.py <passport> <output>` writes one.)
 
-**If they agreed:**
+**If they agreed** (only possible when `PHAEACIA_UPLOAD_ENDPOINT` is set, see Part 4; the script reads it):
 
 ```bash
 python3 "${SKILL_DIR:?resolve this skill folder first, see the rules at the top}/scripts/publish.py" <passport-path>
@@ -314,6 +320,8 @@ It also writes `<name>-passport.link.md` next to the passport, holding the publi
 Close with three lines and no more: the link, where the link file is and why it matters, and what to do with the link, which is to send it to the person who should have this agent; their own assistant takes it from there.
 
 **If publishing fails**, the script exits non-zero and prints one plain line saying what to do. Show that line, hand over the validated `.md` file, and stop. Do not retry in a loop and do not stall. The passport is finished without the page.
+
+**Exit 5 means the host is closed to new uploads** (it answered HTTP 410). Its first line reads "hosting at <host> is closed to new uploads; your passport file is kept locally at <path>". Show that line, hand over the file at that path, and stop. Nothing was published, nothing was written, and the passport is unchanged. Do not try another address on your own.
 
 **Exit 4 is the exception and must not be read as "no page".** It means the passport WAS published and the link file could not be written, so a page exists that the owner has no delete token for. Say that plainly, give them the URL from the script's output, and tell them to save it now: the delete token is issued once and cannot be reissued.
 
