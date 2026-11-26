@@ -3,6 +3,9 @@
 
 Usage: preflight.py PASSPORT.md
 Exit 0 and print OK, or exit 1 and say what the upload endpoint will refuse.
+(--codes prints the codes alone and --stage3-only skips stage 1 for a fragment.
+Both are hooks for the project's parity check, and an OK under --stage3-only
+says nothing about an upload.)
 
 Why this exists, and why it is not part of validate.py. The authority is split
 deliberately: validate.py is the reference implementation of the FORMAT rules,
@@ -113,13 +116,27 @@ SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*):")
 #
 # THE CLASS IS GENERATED, NOT TYPED: every Cf code point in the BMP, plus the
 # zero-advance marks and blank-rendering fillers (Mongolian FVS, Khmer inherent
-# vowels, the Hangul fillers, Braille blank, the variation selectors). Seventy code points in twenty-one ranges. Zero false positives over
-# 17,682 prose files.
+# vowels, the Hangul fillers, Braille blank, the variation selectors). 437 code
+# points in 29 ranges, 8 of those ranges above the BMP. Counted off the compiled
+# class rather than off this sentence: `[c for c in range(0x110000) if
+# INVISIBLE.match(chr(c))]`. It said "seventy code points in twenty-one ranges"
+# until 2026-09-04, which was the count before the astral block was added, so
+# the class grew and its prose did not.
+#
+# THE FALSE-POSITIVE FIGURE HAS NOT BEEN RE-MEASURED AGAINST THIS CLASS. The
+# "zero false positives over 17,682 prose files" that used to sit on this line
+# was measured against the seventy-point class. Adding code points to a
+# character class can only add matches, never remove one, so that result does
+# not carry forward and is not restated here. What is known is the direction:
+# the 367 added points are all format controls, variation selectors and tag
+# characters that render as nothing, so a prose false positive would have to be
+# a file that genuinely contains one. Nobody has run that count.
 #
 # IT IS NOT COMPLETE AND THIS COMMENT DOES NOT CLAIM IT IS. The first version
 # enumerated the fourteen characters somebody had thought to try, and a full sweep
 # of all 1,112,064 code points found 153 more that defeat the rule and are refused
-# by nothing. Most are now covered; the astral ones cannot be, see below. A list
+# by nothing. All of them are now covered, the astral block included: the "cannot
+# be" that stood here until 2026-09-04 was measured false, see below. A list
 # of invisible characters is a list of what has been looked for. Treat it as a
 # floor that gets raised, never as a boundary that holds.
 #
@@ -132,13 +149,27 @@ SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*):")
 # about. A combining acute between ? and a parameter name does not arrive by
 # accident. It also renders as a visible mark on the ?, so it is not hidden.
 #
-# THE ASTRAL LIMIT, which is a real gap and is filed rather than accepted quietly.
-# 120 Cf code points sit above the BMP, including the tag block U+E0000-U+E007F,
-# which is invisible by design and a known hiding trick. They are NOT covered: a
-# JS character class containing astral code points without /u is read as surrogate
-# pairs, which is precisely the cross-engine defect the delimiter anchoring was
-# introduced to fix. Closing them is part of the wider decision about whether
-# this rule set adopts the unicode flag at all, which is not this rule's to take.
+# THE ASTRAL LIMIT IS CLOSED IN THIS ENGINE, AND THIS PARAGRAPH USED TO SAY THE
+# OPPOSITE. It read "120 Cf code points sit above the BMP ... They are NOT
+# covered" until 2026-09-04, while the class immediately below it already
+# carried eight astral ranges. Measured: all 120 astral Cf code points match,
+# including the tag block U+E0000-U+E007F, which is invisible by design and a
+# known hiding trick.
+#
+# THE CROSS-ENGINE WORRY IS ALSO CLOSED, AND THE FIRST DRAFT OF THIS REPAIR GOT
+# THAT WRONG TOO. It said the site's copy could not cover the astral block
+# without adopting /u across the whole table. False: `https://github.com/Phaeacia-ai/phaeacia-agent-passport/blob/HEAD/web/lib/_validate.mjs`
+# carries this class as its OWN regex literal with its own `/gu` flags, so the
+# unicode flag is scoped to this one pattern and touches no other rule's \b or
+# \d. Enumerated over every non-surrogate code point in both engines and
+# compared: 437 in Python, 437 in V8, sets identical, neither side has one the
+# other lacks. Rerun that comparison rather than trusting this sentence; it is
+# the sentence that was wrong twice.
+#
+# WHAT IS STILL TRUE ABOUT /u, so the old worry is not simply deleted: adopting
+# the unicode flag on the OTHER rules in this table would change \b and \d
+# semantics across all of them, which is why it has not been done there. That is
+# a decision about the rule set, not about this rule.
 #
 # THE ACCEPTED MISS, stated plainly. U+0085 is mapped to a space rather than
 # removed, so ?<U+0085>key= still evades. That is deliberate: U+0085 is a line
@@ -834,24 +865,44 @@ SECRETS = [
     # would show up if it were common.
     #
     # If it turns out to bite a real uploader, the fix is a shared placeholder
-    # exclusion applied to all twenty rules at once, not a special case
+    # exclusion applied to all 21 rules at once, not a special case
     # bolted onto these eight.
     #
     # WHAT IS STILL UNCAUGHT, named so that the presence of seven rules is not
-    # read as coverage. Found by attacking this block rather than by writing it:
+    # read as coverage. Found by attacking this block rather than by writing it.
+    # Re-run against the live rules on 2026-09-04, because two entries had gone
+    # stale and a list of gaps that lists closed ones is worse than no list:
     #
-    #   - Slack WORKFLOW trigger URLs, hooks.slack.com/triggers/T.../<digits>/...
-    #     A live credential. The rule below is anchored on /services/T.../B.../
-    #     and cannot see a different path with a numeric second segment. This is
-    #     the one most worth adding next.
-    #   - Stripe whsec_ webhook signing secrets.
-    #   - Linear lin_oauth_ tokens.
-    #   - Figma figd_, Resend re_, Telegram bot tokens.
+    #   - CLOSED. Slack WORKFLOW trigger URLs, hooks.slack.com/triggers/... The
+    #     rule labelled "a webhook URL carrying its own secret" covers them.
+    #     Named by its label because that is what this file calls it: the
+    #     identifier WEBHOOK_URL belongs to scrub.py and appears nowhere in
+    #     preflight.py, so a reader grepping for it here finds only comments.
+    #     Kept here as a closed entry
+    #     rather than deleted, because "the one most worth adding next" was the
+    #     note that got it added and deleting it hides why the rule exists.
+    #   - PARTLY CLOSED, and the half that remains is the one that matters.
+    #     A Telegram bot token inside an api.telegram.org URL is caught by
+    #     that same webhook rule. The BARE token, `123456789:AAH...` on its own or in an
+    #     assignment, is still accepted: measured, preflight returns no finding.
+    #     The URL form is the one people paste; the bare form is the one that
+    #     ends up in a config file.
+    #   - Stripe whsec_. The BARE value is uncaught, measured. In an assignment
+    #     (STRIPE_WEBHOOK_SECRET = whsec_...) it IS caught, by the generic
+    #     credential-assignment rule rather than by any whsec_ rule. So "still
+    #     uncaught" is true of the bare form only, and the assignment form is
+    #     the one that appears in a config file.
+    #   - Linear lin_oauth_ tokens. Still uncaught, measured.
+    #   - Figma figd_, Resend re_. Still uncaught, measured.
     #   - Both Twilio values that are actually secret; see the absence note above.
     #
-    # Each is a deliberate gap rather than an oversight now that it is written
-    # down, and none was measured, so none should be added without the same
-    # false-positive work the seven above got.
+    # Each open entry is a deliberate gap rather than an oversight now that it is
+    # written down, and none was measured for false positives, so none should be
+    # added without the same false-positive work the seven above got.
+    #
+    # A list of gaps expires. Nothing re-runs it, so it drifts in the direction
+    # that reads as coverage: rules get added elsewhere and the gap list keeps
+    # claiming they are missing. Re-measure this block, do not read it.
     #
     # THESE RULES ARE A BACKSTOP AND NOT A SOLUTION, and the difference is the
     # thing to carry away from this block rather than the seven patterns in it.
@@ -944,6 +995,78 @@ def fenced(lines):
     return inside
 
 
+# ---- Stage 1, transport -----------------------------------------------------
+#
+# THE ENDPOINT REFUSES ON THE BYTES BEFORE IT READS A LINE, and until 2026-10-22
+# this file answered only for the size cap. A passport carrying one ANSI colour
+# escape out of a terminal log passed validate.py, printed OK here, and was
+# refused E_CONTROL_CHARS on upload; a Latin-1 file crashed this script with a
+# traceback; a 501-byte passport passed validate.py and was refused E_TOO_SMALL.
+# Each is the failure this file exists to prevent (audit of 2026-10-22).
+#
+# So this is the endpoint's transport(), in its order and with its codes, and
+# each message is the endpoint's own text, word for word: the project's test
+# suite holds the two copies equal, and its parity check compares the codes on
+# every fixture. Fail fast, one refusal, as there.
+#
+# Two of transport()'s refusals are not here, and neither is a gap. E_CONTENT_TYPE
+# is a property of the request rather than of the file, and publish.py always
+# sends text/markdown. The unpaired-surrogate half of E_CONTROL_CHARS cannot
+# arise from bytes: a strict UTF-8 decode refuses an encoded surrogate in both
+# runtimes, so those bytes are E_NOT_UTF8 on both sides.
+MAX_BYTES = 262144
+MIN_BYTES = 512
+# C0 controls other than TAB and LF, plus DEL, the endpoint's class exactly. NOT
+# CR: transport() keeps a lone CR (see gate_reading() in validate.py), so
+# refusing one here would predict a refusal the endpoint never makes.
+CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+STAGE1 = {
+    "E_TOO_LARGE": "That file is larger than 256 KB. A passport describes an agent, it does not contain one. Trim the golden examples and try again.",
+    "E_NOT_UTF8": "This file is not valid UTF-8 text. Save it as UTF-8 and upload it again.",
+    "E_TOO_SMALL": "That file is too short to be a passport. Check that you copied the whole thing, including the frontmatter at the top.",
+    "E_CONTROL_CHARS": "This file contains control characters that do not belong in a text document. Re-export it from your editor as plain UTF-8.",
+}
+
+
+def not_utf8(raw, e):
+    return ("E_NOT_UTF8", ["line %d: byte 0x%02X is not UTF-8"
+                           % (raw.count(b"\n", 0, e.start) + 1, raw[e.start])])
+
+
+def transport(raw):
+    """Stage 1 on the file's bytes. Returns (refusal, text): refusal is None or
+    (code, [detail]), and text is what the endpoint hands stage 3, or None."""
+    # In bytes, not characters: both caps are byte caps, and a passport full of
+    # non-ASCII is longer on the wire than on the screen.
+    if len(raw) > MAX_BYTES:
+        return ("E_TOO_LARGE", ["%d bytes, over the %d limit" % (len(raw), MAX_BYTES)]), None
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return not_utf8(raw, e), None
+    # Two BOMs, not one: TextDecoder drops one and transport() a second, as
+    # gate_reading() in validate.py records. The floor is measured on the raw
+    # body, BOMs included, and only after the decode, which is the endpoint's order.
+    for _ in range(2):
+        if text.startswith("\ufeff"):
+            text = text[1:]
+    if len(raw) < MIN_BYTES:
+        return ("E_TOO_SMALL", ["%d bytes, under the %d minimum" % (len(raw), MIN_BYTES)]), None
+    text = text.replace("\r\n", "\n")
+    if CONTROL.search(text):
+        # Where, once per line and character: a line of 262,144 NULs is one
+        # detail, not a quarter of a million. Every line is counted, though.
+        # This stopped at twenty, so 300 lines with an ANSI escape printed
+        # eight and "... and 12 more", and an owner who fixed twenty was
+        # refused again (review, 2026-10-23). main() prints eight either way.
+        hits = []
+        for i, line in enumerate(text.split("\n")):
+            for c in dict.fromkeys(CONTROL.findall(line)):
+                hits.append("line %d: U+%04X" % (i + 1, ord(c)))
+        return ("E_CONTROL_CHARS", hits), None
+    return None, text
+
+
 def check(text):
     """Everything the upload gate refuses on sight. Returns a list of (code, [detail])."""
     text = text.replace("\r\n", "\n")
@@ -955,7 +1078,10 @@ def check(text):
     for i, line in enumerate(lines):
         if inside[i] or INSTALLER_PLACEHOLDER in line:
             continue
-        for m in TAG.finditer(line):
+        # Only up to the last ">", where every match ends: the same matches,
+        # without `[^>]*` running to the end of a line of `<a ` and giving it
+        # back, which was quadratic (2026-10-22). Same as both gates.
+        for m in TAG.finditer(line, 0, line.rfind(">") + 1):
             target = holes if is_placeholder(m.group(0)) else tags
             target.append("line %d: %s" % (i + 1, m.group(0)))
     if tags:
@@ -1036,6 +1162,17 @@ ADVICE = {
 
 
 def main():
+    # An owner's console may not be UTF-8 (cp1252 on Windows), and a message
+    # that quotes the passport must reach it as an escape, never as a
+    # UnicodeEncodeError traceback in place of the verdict. The shipped
+    # validate.py does crash that way. Here stderr already defaults to
+    # backslashreplace and stdout carries only ASCII today, so this is a floor
+    # for the next message somebody prints, not a fix for a live crash.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass   # replaced by something that is not a TextIOWrapper
     # --codes prints one error code per line and nothing else. A parity check
     # uses it to diff this file against the other implementation on
     # every fixture; a person gets the prose form.
@@ -1075,38 +1212,47 @@ def main():
     if len(args) != 1:
         print("Usage: preflight.py [--codes] PASSPORT.md", file=sys.stderr)
         sys.exit(2)
-    # THE SIZE LIMIT IS PART OF THE QUESTION THIS TOOL ANSWERS.
+    # THE SIZE LIMIT IS PART OF THE QUESTION THIS TOOL ANSWERS, and so is the
+    # rest of stage 1.
     #
     # The endpoint refuses a body over MAX_BYTES before it looks at the content
     # at all, with E_TOO_LARGE. This file knew nothing about that,
     # so on a 300,000-byte passport it scanned the content, found no secret, and
     # printed "the upload endpoint will accept this passport's content" — which
     # is false, and false about the single question this tool exists to answer.
+    # The size cap was fixed alone, and the same sentence stayed false for a
+    # control character, a non-UTF-8 byte and a file under the floor until
+    # transport() above took the whole stage.
     #
-    # A clean scan is not an acceptance. Checked FIRST, and in bytes rather than
-    # characters, because MAX_BYTES is a byte cap and a passport full of
-    # non-ASCII is longer on the wire than on the screen.
-    MAX_BYTES = 262144
-
+    # A clean scan is not an acceptance. Checked FIRST, as the endpoint does.
     raw = open(args[0], "rb").read()
-    if len(raw) > MAX_BYTES:
-        if codes_only:
-            print("E_TOO_LARGE")
-            sys.exit(1)
-        print("The upload endpoint will refuse this passport:", file=sys.stderr)
-        print("\nE_TOO_LARGE", file=sys.stderr)
-        print("   %d bytes, over the %d limit. A passport describes an agent, it does\n"
-              "   not contain one. Trim the golden examples and try again." % (len(raw), MAX_BYTES),
-              file=sys.stderr)
-        sys.exit(1)
-
-    found = check(raw.decode("utf-8"))
+    # --stage3-only skips stage 1 and scans the text as given. It exists for
+    # one caller: the parity check's stage-3 probes are fragments, a line or
+    # two each, which it hands the endpoint's validate() without transport();
+    # through stage 1 every one would be E_TOO_SMALL and compare nothing.
+    # As first written it printed the upload's OK on files the endpoint
+    # refuses, and a traceback on a byte that is not UTF-8 (review,
+    # 2026-10-23), so its OK now says what it is, and such a byte is
+    # E_NOT_UTF8 here too: stage 3 cannot read past it either.
+    stage3_only = "--stage3-only" in sys.argv[1:]
+    if stage3_only:
+        try:
+            refusal, text = None, raw.decode("utf-8")
+        except UnicodeDecodeError as e:
+            refusal, text = not_utf8(raw, e), None
+    else:
+        refusal, text = transport(raw)
+    found = [refusal] if refusal else check(text)
     if codes_only:
         for code in sorted({c for c, _ in found}):
             print(code)
         sys.exit(1 if found else 0)
     if not found:
-        print("OK: the upload endpoint will accept this passport's content.")
+        if stage3_only:
+            print("OK: stage 3 finds nothing. Stage 1 was skipped (--stage3-only), "
+                  "so this is not a verdict on an upload.")
+        else:
+            print("OK: the upload endpoint will accept this passport's content.")
         sys.exit(0)
     print("The upload endpoint will refuse this passport:", file=sys.stderr)
     for code, details in found:
@@ -1115,7 +1261,7 @@ def main():
             print("  %s" % d, file=sys.stderr)
         if len(details) > 8:
             print("  ... and %d more" % (len(details) - 8), file=sys.stderr)
-        print("  %s" % ADVICE.get(code, ""), file=sys.stderr)
+        print("  %s" % (STAGE1.get(code) or ADVICE.get(code, "")), file=sys.stderr)
     sys.exit(1)
 
 

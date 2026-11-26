@@ -1,5 +1,15 @@
 # Agent Passport, capture skill
 
+**Archived.** Phaeacia built this skill in 2026 and no longer develops it. It is
+published as-is, under CC BY 4.0 for the skill and the format and Apache 2.0 for
+the scripts, so the work stays available to study, run and fork. There is no
+support, no roadmap and no security fixes. The source, including the hosted app,
+is at https://github.com/Phaeacia-ai/phaeacia-agent-passport.
+
+**Hosting at app.phaeacia.ai is closed to new uploads.** That site is read-only.
+This skill now ends with the passport as a file on your machine, which you send
+however you like. See *Publishing* below for what still works.
+
 This folder is a skill for Claude Code. It reads an agent you already built, on
 your machine, and writes an **Agent Passport**: one Markdown file describing what
 the agent does, what it needs from whoever installs it, and what it cannot do.
@@ -39,15 +49,9 @@ ls -l ~/.claude/skills/agent-passport
 declares its own name, so a second copy under a different folder name still
 collides with the first. Whichever copy you keep, keep only one.
 
-To update later, once it is a clone of *this* repository:
-
-```
-git -C ~/.claude/skills/agent-passport pull
-```
-
-Updating matters more here than in most tools. The install instructions this
-skill writes into a passport are versioned with the skill, so a stale copy hands
-people install steps for platforms as they were on the day you cloned it.
+There will be no further updates to pull. The install instructions this skill
+writes into a passport describe each platform as it was when the project was
+archived, and platforms change; read them with that in mind.
 
 ## Use
 
@@ -58,7 +62,15 @@ In Claude Code, from the folder holding the agent you want to share:
 ```
 
 It reads the folder, asks what it cannot answer by reading, shows you what it
-found before anything leaves your machine, and writes a passport.
+found, and writes a passport next to your agent as `<name>-passport.md`. That
+file is the result. Send it to whoever should have the agent.
+
+To give it the install instructions inside the file, so the recipient can paste
+it straight into their own assistant:
+
+```
+python3 ~/.claude/skills/agent-passport/scripts/assemble.py <name>-passport.md <name>-install.md
+```
 
 **It writes a second file, `corrections.tsv`, next to the passport.** One
 tab-separated line for every value you corrected during the review: the field,
@@ -89,15 +101,30 @@ Without it you would spend a whole capture on work that could only fail at the
 secret-scanning step near the end. So a missing interpreter costs you a message,
 not a capture. Run `python3 --version` yourself if you want to know in advance.
 
+## Publishing
+
+The hosted site at `app.phaeacia.ai` no longer accepts uploads. Its upload
+endpoint answers HTTP 410, and `scripts/publish.py` reports that as "hosting at
+app.phaeacia.ai is closed to new uploads; your passport file is kept locally at
+<path>", sends nothing else, writes nothing and exits 5. The passport file is
+only ever read, never changed.
+
+The skill does not offer to publish unless `PHAEACIA_UPLOAD_ENDPOINT` is set. If
+you run your own deployment of the app, from the `web/` directory of
+https://github.com/Phaeacia-ai/phaeacia-agent-passport, set that variable to its
+upload address (`https://<your-host>/api/upload`) and the skill asks whether to
+publish there. Everything below about the network applies to that case.
+
 ## Network: one call site, and the exact shape of it
 
 The skill runs on your machine except for one thing. Being exact about it is more
 useful than being reassuring, because you can check all of this yourself.
 
 `scripts/publish.py` is the only file that opens a network connection. It POSTs
-to `https://app.phaeacia.ai/api/upload`, and it runs **only when a passport is
-being published to a link**. If you decline publishing, the passport is a file on
-your disk and nothing is sent.
+to the endpoint `PHAEACIA_UPLOAD_ENDPOINT` or `--endpoint` names, falling back to
+`https://app.phaeacia.ai/api/upload`, which is closed. It runs **only when a
+passport is being published to a link**. If you decline publishing, or no
+endpoint is set, the passport is a file on your disk and nothing is sent.
 
 Four details that a shorter version of this paragraph would have got wrong:
 
@@ -127,24 +154,16 @@ Search the whole folder rather than `scripts/` and two come back, because this
 README contains the word `urllib` in the command above. Search `scripts/`, as
 written, and you get the one file.
 
-## Reporting a problem, and why a pull request will not work
+## Problems, changes and forks
 
-**This repository is generated.** Every file is built from canonical files in a
-private repository, and this copy is overwritten each time that build runs. So a
-pull request here edits a file that gets erased, and merging it would make the
-two copies disagree.
+**This repository is generated and archived.** Every file here is built from the
+canonical files in https://github.com/Phaeacia-ai/phaeacia-agent-passport by its
+export script. Nobody reads issues or merges pull requests in either repository now.
 
-**That is a trade we chose, not a constraint.** A skill also loads from a symlink
-or from a `skills/<name>/SKILL.md` inside a larger repository, so publishing the
-source instead would work and would take pull requests. It would cost a second
-install step. We picked the one-command install because most people installing
-this are not developers, and accepted that contributions cannot arrive as
-patches.
-
-**Issues are the useful channel.** Open one, quote the file and line, say what it
-should say instead. That reaches the canonical file, which is the copy that
-survives. If enough people want to send patches, that is the signal to revisit
-the shape, and it is written down as the trigger to do so.
+**To change something, fork the source repository**, edit the canonical file
+there and rebuild; its README explains how. Editing a copy here works for your
+own use, but the two copies then disagree. If you publish a fork, rename it: the
+licences cover the text and the code, not the Phaeacia name or logo.
 
 ## Licence
 
@@ -168,3 +187,8 @@ and lands in section 5. So an assembled passport carries a CC BY component and a
 Apache one, each asking what its own licence asks if you redistribute it. That is
 a claim on our text travelling inside your file, never a claim on your file. The
 passport you wrote, and everything your agent does, remain entirely yours.
+
+## Credits
+
+Agent Passport was built by Phaeacia, a project by Raffael Hüberli. Krunal Rathod
+contributed to its design and code.

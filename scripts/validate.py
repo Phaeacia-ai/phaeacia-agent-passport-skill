@@ -326,7 +326,13 @@ ID_WORD_SPLIT = re.compile(r"[^\x21-\x7e]+")
 # A vocabulary id begins and ends with an ASCII letter or digit: files.read,
 # email.send, money.transfer, money.transfer#1. Everything else on either end
 # of a word is punctuation a sentence put there.
-ID_TRIM = re.compile(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$")
+#
+# A SET AND A LOOP, NOT ^[^A-Za-z0-9]+|[^A-Za-z0-9]+$ (2026-10-22). That regex
+# retries its `+$` half from every position inside a run of punctuation or
+# blanks and gives the run back one character at a time, so it is quadratic:
+# one backticked consent cell of `x`, 8,000 `#` and `y` cost 5.8 s of
+# validate(), and idCore() in the upload endpoint had the same regex in V8.
+ID_END = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
 
 
 def id_core(word):
@@ -350,7 +356,12 @@ def id_core(word):
     written AND as its core, so trimming can only add a refusal and never
     remove one: `` `money.` `` is a write id by the prefix test as written,
     and its core `money` is not, and the union keeps the refusal."""
-    return ID_TRIM.sub("", word)
+    a, b = 0, len(word)
+    while a < b and word[a] not in ID_END:
+        a += 1
+    while b > a and word[b - 1] not in ID_END:
+        b -= 1
+    return word[a:b]
 
 
 def consent_cell_write_id(cell, spec_refs):
@@ -616,6 +627,9 @@ def clip_echo(text):
     return text if len(text) <= ECHO_CAP else text[:ECHO_CAP] + "..."
 
 
+MONEY_IN_SPAN = re.compile(r"money\.", re.I)
+
+
 def collapse_money_spans(text):
     """Every backticked span containing a money token collapsed to the prefix.
 
@@ -628,9 +642,28 @@ def collapse_money_spans(text):
     labelled.
 
     A span CONTAINING a money token, not a span that starts with one, because
-    the word scan finds `run money.transfer_acct_99 now`."""
-    return clip_echo(collapse_bare_money(
-        re.sub(r"`[^`]*money\.[^`]*`", "`money.*`", text, flags=re.I)))
+    the word scan finds `run money.transfer_acct_99 now`.
+
+    A LOOP, and it is re.sub(r"`[^`]*money\\.[^`]*`", ...) read once
+    (2026-10-22): from each backtick, the span to the next one is collapsed if
+    it holds the token, and if not, that next backtick opens the following
+    span, which is how the regex walked them. The regex ran its second
+    `[^`]*` to the end of the cell from every `money.` in a span that never
+    closed, which is quadratic: 4,000 in one cell cost 0.4 s of validate().
+    Twin of collapseMoneySpans() in the upload endpoint."""
+    out, start, opened = [], 0, text.find("`")
+    while opened != -1:
+        closed = text.find("`", opened + 1)
+        if closed == -1:
+            break
+        if MONEY_IN_SPAN.search(text, opened + 1, closed):
+            out.append(text[start:opened] + "`money.*`")
+            start = closed + 1
+            opened = text.find("`", start)
+        else:
+            opened = closed
+    out.append(text[start:])
+    return clip_echo(collapse_bare_money("".join(out)))
 
 
 def collapse_spans(text):
@@ -910,7 +943,7 @@ def yaml_trim(s):
 
 
 def structural_trim(s):
-    """Trim a line for a STRUCTURAL comparison, with WS_BOTH and not str.strip().
+    r"""Trim a line for a STRUCTURAL comparison, with WS_BOTH and not str.strip().
 
     `str.strip()` uses Python's `\s` and `String.prototype.trim()` uses
     JavaScript's, and those are different sets (see WS_ANY above). A `## 3.
@@ -960,8 +993,15 @@ def yaml_field_re(key, value=True):
     PASS. The Python-only characters do not evade, because widening Python's
     skip makes the scan match MORE lines, which is the fail-closed direction.
     These checks have no twin on the site, so this is a single-gate hole rather
-    than a parity split, and it was open on main."""
-    head = "^[%s]*-?[%s]*" % (WS_ANY, WS_ANY)
+    than a parity split, and it was open on main.
+
+    The dash is OPTIONAL AS A GROUP, `(?:-[WS]*)?`, and not `-?[WS]*`. Those
+    match the same lines, but the second puts two `[WS]*` side by side, and on
+    a line of blanks that is not this key the engine tries every way of
+    splitting the run between them: a line of 8,000 U+2000 inside an input
+    entry cost 2.4 s of validate() (2026-10-22). The key starts with a letter,
+    so either head ends at the same place and the captured value is the same."""
+    head = "^[%s]*(?:-[%s]*)?" % (WS_ANY, WS_ANY)
     tail = ":[%s]*([^%s]+)" % (WS_ANY, WS_BOTH) if value else ":[%s]*(?:#.*)?$" % WS_ANY
     return re.compile(head + re.escape(key) + tail)
 
@@ -1791,7 +1831,11 @@ def untrusted_content(text):
     for i, line in enumerate(lines):
         if i in skip or inside[i] or INSTALLER_PLACEHOLDER in line:
             continue
-        for m in HTML_TAG.finditer(line):
+        # Only up to the last ">", where every match ends, so the matches are
+        # the same ones and `[^>]*` never runs to the end of the line and gives
+        # it back: `<a ` repeated with no ">" was quadratic in both engines
+        # (2026-10-22). Twin of the tag scan in the upload endpoint.
+        for m in HTML_TAG.finditer(line, 0, line.rfind(">") + 1):
             (holes if is_placeholder(m.group(0)) else tags).append(
                 "line %d: %s" % (i + 1, m.group(0)))
         if "<!--" in line:

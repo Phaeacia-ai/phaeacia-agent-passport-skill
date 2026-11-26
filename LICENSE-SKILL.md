@@ -1,5 +1,5 @@
 Agent Passport capture skill
-Copyright 2026 Raffael Hueberli
+Copyright 2026 Phaeacia, a project by Raffael Hüberli
 
 SPDX-License-Identifier: CC-BY-4.0
 
@@ -19,17 +19,17 @@ WHAT THIS COVERS
 WHY THIS CHANGED, BECAUSE IT REVERSES A DECISION MADE ON PURPOSE
 
 Until 2026-08-18 this notice read "NOT OPEN SOURCE" and granted no licence at
-all. A decision of 2026-08-11 held that the
-capture skill stayed closed, and this notice was written to implement that
-refusal rather than to leave the question open.
+all. A decision of 2026-08-11 had kept the capture skill closed, and this
+notice was written to implement that refusal rather than to leave the question
+open.
 
-Raffael reversed it deliberately, so that the skill can be published as a
-repository people install by cloning and update by pulling. Three reasons, and
-none of them is that the earlier decision was wrong:
+Phaeacia reversed it deliberately on 2026-08-18, so that the skill could be
+published as a repository people install by cloning. Three reasons, and none of
+them is that the earlier decision was wrong:
 
   A copy handed out by hand carries installer text frozen on the day it was
-  made. `git pull` retires that, and it is the accepted limitation the product
-  plan has carried since the beginning.
+  made. While the project was developed, `git pull` retired that. Since the
+  project was archived there is nothing further to pull.
 
   The product's central claim is that secrets never travel. A claim like that is
   worth more when a stranger can check it than when they have to trust it, and
@@ -44,11 +44,11 @@ none of them is that the earlier decision was wrong:
 
 WHAT THIS DOES NOT COVER
 
-- The browser capture prompt is unaffected and remains proprietary, all rights
-  reserved. Nothing in this change reaches it. Where it is published for
-  people to run, publishing it is not a licence to redistribute or modify it.
-- `references/` and `scripts/` are GENERATED from the project's source files. Each carries the licence of the file it was generated from, whatever
-  that licence is. This notice does not narrow it and did not before.
+- The browser capture prompt has its own notice. It stayed proprietary after
+  this change and was relicensed to CC BY 4.0 when the project was archived.
+- `references/` and `scripts/` are GENERATED from the project's source files.
+  Each carries the licence of the file it was generated from, whatever that
+  licence is. This notice does not narrow it and did not before.
 - The **code** is Apache 2.0: the validator, the scrubber, the preflight check,
   the assembler and the publisher, wherever they sit. In the published skill
   repository that is `scripts/`, and the licence text and `NOTICE` ship beside

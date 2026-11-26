@@ -11,11 +11,24 @@ because the installer text is product-owned and versioned separately from the
 agent description. This script performs that insertion. The site's upload
 endpoint does the same thing; keep the two in step.
 
+THE "KEEP THE TWO IN STEP" ABOVE IS NARROWER THAN IT READS, and saying so here
+because a reader takes it as a claim that both paths carry both guards. They do
+not. The site assembles core + branch + judge in the browser
+(`https://github.com/Phaeacia-ai/phaeacia-agent-passport/blob/HEAD/web/assets/passport.js`) with no `comparison_mode` guard and no denied-path
+guard of its own; it relies on the upload endpoint refusing the result. So the
+hazards below are checked on this path only. Pre-existing, not a regression, and
+recorded rather than fixed because the served path is not this file's to change.
+
 Stdlib only. Exit 0 on success, 1 on any problem, including the two integration
 hazards that only show up in the assembled file:
 
-  - a line matching `comparison_mode:` inside installer text, which would break
-    validate.py check 5, since it counts that pattern across the whole body
+  - a `comparison_mode:` assignment inside installer text, which would break
+    validate.py check 5, since it counts that pattern across the whole body.
+    Checked across the ASSEMBLED body here too, not across installer text alone:
+    the value can sit on the line after the key, and the key can sit at the very
+    end of installer text with the whitespace and the next non-space character
+    both coming from the passport. Both shapes assembled clean under narrower
+    versions of this guard and then failed check 5.
   - any denied-path string from validate.py check 9 appearing in installer text
 """
 
@@ -136,16 +149,45 @@ def installer_text(only=None):
     return "\n\n".join(parts) + "\n"
 
 
-def check(text):
-    """Return a list of problems the insertion would introduce."""
+def check(text, following=""):
+    """Return a list of problems the insertion would introduce.
+
+    `following` is whatever the passport carries AFTER the placeholder. It is
+    scanned but never blamed, and the reason is the whole history of this guard.
+
+    THE INPUT A PATTERN IS APPLIED TO IS PART OF THE PATTERN, and this function
+    got that wrong twice in two different ways.
+
+    First it scanned line by line while validate.py check 5 scans the whole
+    body, where `\\s` crosses a newline. So `comparison_mode:` with its value on
+    the NEXT line assembled with exit 0 and then failed check 5.
+
+    The repair for that widened the scan to the whole text and was still wrong,
+    because this function is handed installer text ALONE while check 5 reads the
+    ASSEMBLED body. A `comparison_mode:` at the very END of installer text has
+    no `\\S` after it inside installer text, so the widened scan still passed it,
+    and `\\s*` then crossed the join and matched the `#` of the passport's own
+    `## 6. Losses`. Same defect, one line further along, found by a critic
+    building the counterexample rather than assessing whether one existed.
+
+    So: scan the join, blame only what starts inside installer text. A
+    `comparison_mode:` that lives in the passport itself is the passport's
+    business and check 5 will judge it there.
+    """
     problems = []
-    for i, line in enumerate(text.split("\n"), 1):
-        if re.search(r"comparison_mode:\s*\S", line):
-            problems.append(
-                "installer text line %d contains a `comparison_mode:` assignment, "
-                "which makes the assembled passport fail validate.py check 5. "
-                "Write it as prose or without the colon: %s" % (i, line.strip()[:70])
-            )
+    scan = text + following
+    for match in re.finditer(r"comparison_mode:\s*\S", scan):
+        if match.start() >= len(text):
+            continue            # starts in the passport, not in installer text
+        i = scan.count("\n", 0, match.start()) + 1
+        problems.append(
+            "installer text line %d contains a `comparison_mode:` assignment, "
+            "which makes the assembled passport fail validate.py check 5. "
+            "The value may be on the next line and still count, because check 5 "
+            "reads the whole body and `\\s` crosses a newline. "
+            "Write it as prose or without the colon: %s"
+            % (i, scan[match.start():match.start() + 70].replace("\n", "\\n"))
+        )
     norm_text = normalize_forbidden(text)
     for word in FORBIDDEN:
         needle = normalize_forbidden(word)
@@ -188,7 +230,10 @@ def main():
         sys.exit(1)
 
     text = installer_text(branch)
-    problems = check(text)
+    # Hand check() what FOLLOWS the placeholder so it can see across the join.
+    # check 5 reads the assembled body; a guard that reads less than check 5
+    # reads is a guard with a blind spot at exactly the boundary.
+    problems = check(text, passport.split(PLACEHOLDER, 1)[1])
     if problems:
         for p in problems:
             print("FAIL: %s" % p, file=sys.stderr)
